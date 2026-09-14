@@ -22,14 +22,14 @@ def test_full_pipeline():
             print(f"Using existing test user: {user.email} (ID: {user.id})")
         
         # 2. Ingest all CVs from the configured folder
-        # print(f"\n=== 2. Scanning CV Folder ({settings.RESUME_DIR}) ===")
-        # print("Starting CV ingestion... This might take some time depending on the number of CVs.")
-        # ingest_results = ingest_resume_folder(db)
-        # print("Ingestion results:")
-        # print(f"  Total processed: {ingest_results.get('total')}")
-        # print(f"  Successful: {ingest_results.get('successful')}")
-        # print(f"  Skipped: {ingest_results.get('skipped')}")
-        # print(f"  Failed: {ingest_results.get('failed')}")
+        print(f"\n=== 2. Scanning CV Folder ({settings.RESUME_DIR}) ===")
+        print("Starting CV ingestion... This might take some time depending on the number of CVs.")
+        ingest_results = ingest_resume_folder(db)
+        print("Ingestion results:")
+        print(f"  Total processed: {ingest_results.get('total')}")
+        print(f"  Successful: {ingest_results.get('successful')}")
+        print(f"  Skipped: {ingest_results.get('skipped')}")
+        print(f"  Failed: {ingest_results.get('failed')}")
         
         # 3. Create a mock Job Description
         print("\n=== 3. Uploading Job Description ===")

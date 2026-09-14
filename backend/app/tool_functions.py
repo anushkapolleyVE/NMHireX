@@ -11,6 +11,10 @@ from sqlalchemy.orm import Session
 from openai import OpenAI
 from pypdf import PdfReader
 from docx import Document
+import fitz
+import pytesseract
+pytesseract.pytesseract.tesseract_cmd = r'C:\Users\ankanghosh\AppData\Local\Tesseract-OCR\tesseract.exe'
+from PIL import Image
 from .config import settings
 from .models import (User, Job, JobRequirement, Candidate, Resume, CandidateSkill,
     CandidateExperience, CandidateEducation, CandidateCertification, CandidateProject,
@@ -49,25 +53,59 @@ def read_file(path: str) -> str:
 
             reader = PdfReader(str(p))
 
-            return "\n".join(
+            extracted_text = "\n".join(
                 (page.extract_text() or "")
                 for page in reader.pages
             )
+
+            if len(extracted_text.strip()) < 50:
+                print(f"   [INFO] PDF {p.name} appears to be scanned. Running OCR fallback...")
+                try:
+                    ocr_text = []
+                    doc = fitz.open(str(p))
+                    for page in doc:
+                        pix = page.get_pixmap()
+                        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                        page_text = pytesseract.image_to_string(img)
+                        ocr_text.append(page_text)
+                    extracted_text = "\n".join(ocr_text)
+                except Exception as e:
+                    print(f"   [WARNING] OCR fallback failed for {p.name}: {e}")
+
+            return extracted_text
 
         finally:
             pypdf_logger.setLevel(previous_level)
 
     if p.suffix.lower() == ".docx":
-        return "\n".join(
-            paragraph.text
-            for paragraph in Document(str(p)).paragraphs
-        )
+        doc = Document(str(p))
+        text_lines = []
+        for paragraph in doc.paragraphs:
+            if paragraph.text.strip():
+                text_lines.append(paragraph.text.strip())
+        for table in doc.tables:
+            for row in table.rows:
+                row_text = []
+                for cell in row.cells:
+                    if cell.text.strip():
+                        row_text.append(cell.text.strip().replace('\n', ' '))
+                if row_text:
+                    text_lines.append(" | ".join(row_text))
+        return "\n".join(text_lines)
 
     if p.suffix.lower() == ".txt":
         return p.read_text(
             encoding="utf-8",
             errors="ignore"
         )
+
+    if p.suffix.lower() in [".png", ".jpg", ".jpeg"]:
+        try:
+            img = Image.open(str(p))
+            text = pytesseract.image_to_string(img)
+            return text
+        except Exception as e:
+            raise ValueError(f"Failed to extract text from image: {e}")
 
     raise ValueError(
         f"Unsupported file type: {p.suffix}"
@@ -741,7 +779,11 @@ def ingest_resume_folder(db: Session) -> dict:
             if p.is_file()
             and p.suffix.lower() in {
                 ".pdf",
-                ".docx"
+                ".docx",
+                ".txt",
+                ".png",
+                ".jpg",
+                ".jpeg"
             }
         ],
         key=lambda p: p.name.lower(),

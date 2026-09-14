@@ -11,3 +11,6 @@ groq
  
 # Retry/backoff for transient rate-limit / connection errors.
 tenacity
+pytesseract
+Pillow
+PyMuPDF
