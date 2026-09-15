@@ -2776,7 +2776,7 @@ Assign precise numerical scores for each of the following 8 criteria, adhering s
 
 Criteria & Maximum Points:
 1. mandatory_skills_score: max 30
-2. experience_score: max 25
+2. experience_score: m ax 25
 3. domain_score: max 15
 4. preferred_skills_score: max 10
 5. education_score: max 5
@@ -2987,7 +2987,7 @@ def get_job_candidates(db: Session, job_id: UUID, limit: int = 10) -> list[dict]
 
         results.append({
             "rank": jc.ranking_position,
-            "candidate_id": str(candidate.id),
+            "candidate_id": str(candidate.id),  
             "name": candidate.name,
             "email": candidate.email,
 
@@ -3019,7 +3019,7 @@ def get_job_candidates(db: Session, job_id: UUID, limit: int = 10) -> list[dict]
         })
 
     return results
-
+ 
 def get_user_jobs(db: Session, user_id: UUID) -> list[dict]:
     """Input: authenticated user UUID. Output: only that user's JDs."""
     jobs = db.scalars(select(Job).where(Job.created_by == user_id).order_by(Job.created_at.desc())).all()
