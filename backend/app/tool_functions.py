@@ -3,7 +3,7 @@
 Each function is intentionally small and directly composable; LangGraph is not
 required for this deterministic pipeline.
 """
-import hashlib, json, re, time, logging
+import hashlib, json, re, time, logging, os, base64
 from pathlib import Path
 from uuid import UUID
 from sqlalchemy import select, delete, text
@@ -12,9 +12,8 @@ from openai import OpenAI
 from pypdf import PdfReader
 from docx import Document
 import fitz
-import pytesseract
-pytesseract.pytesseract.tesseract_cmd = r'C:\Users\ankanghosh\AppData\Local\Tesseract-OCR\tesseract.exe'
 from PIL import Image
+import pymupdf  
 from .config import settings
 from .models import (User, Job, JobRequirement, Candidate, Resume, CandidateSkill,
     CandidateExperience, CandidateEducation, CandidateCertification, CandidateProject,
@@ -22,60 +21,138 @@ from .models import (User, Job, JobRequirement, Candidate, Resume, CandidateSkil
 
 openai_client = OpenAI(api_key=settings.GROQ_API_KEY, base_url=settings.GROQ_BASE_URL)
 
+# Separate OpenAI client used ONLY for OCR/vision fallback.
+# Existing Groq client and JSON extraction flow are unchanged.
+OCR_MODEL = "gpt-5.6-luna"
+
+OPENAI_API_KEY = settings.OPENAI_API_KEY
+
+luna_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+
 # ------------------------------------------------------------
 # FILE HELPERS
 # ------------------------------------------------------------
+def _text_is_insufficient(text: str) -> bool:
+    """Return True when native PDF extraction is too sparse to trust."""
+    cleaned = re.sub(r"\s+", " ", text or "").strip()
+    if len(cleaned) < 250:
+        return True
+
+    # A page containing mostly symbols/noise is also a good OCR candidate.
+    alnum = sum(ch.isalnum() for ch in cleaned)
+    return alnum < max(100, int(len(cleaned) * 0.45))
+
+
+def _ocr_pdf_page(page, page_number: int, native_text: str) -> str:
+    """Render one PDF page and use GPT-5.6 Luna to recover only image-based text.
+
+    Native pypdf text is preserved. Luna is asked for additional text visible
+    in the page image so partial image sections are not lost or duplicated.
+    """
+    if luna_client is None:
+        logging.warning(
+            "OPENAI_API_KEY is not configured; skipping OCR for page %s.",
+            page_number,
+        )
+        return ""
+
+    try:
+        # ~144 DPI is normally enough for CV text while keeping image size reasonable.
+        pix = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+        image_bytes = pix.tobytes("png")
+        image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+
+        response = luna_client.responses.create(
+            model=OCR_MODEL,
+            input=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": (
+                                "Recover text from image-based content on this CV page. "
+                                "The native PDF text extracted by pypdf is provided below. "
+                                "Return ONLY additional readable text that is present in the "
+                                "page image but missing from the native text. This includes "
+                                "image-based experience, skills, education, certifications, "
+                                "projects, tables, dates, companies, job titles and other "
+                                "resume information. Do not repeat text already represented "
+                                "in the native text. Do not summarize. Do not invent or infer. "
+                                "If the image contains no additional text, return an empty "
+                                "response.\n\n"
+                                f"NATIVE PDF TEXT:\n{native_text[:12000]}"
+                            ),
+                        },
+                        {
+                            "type": "input_image",
+                            "image_url": f"data:image/png;base64,{image_b64}",
+                        },
+                    ],
+                }
+            ],
+        )
+
+        return (response.output_text or "").strip()
+
+    except Exception as error:
+        logging.warning(
+            "OCR failed for PDF page %s: %s",
+            page_number,
+            error,
+        )
+        return ""
+
+
+def _read_pdf_with_ocr(path: str) -> str:
+    """Extract PDF text with pypdf and OCR only pages where native text is insufficient."""
+    p = Path(path)
+    pypdf_logger = logging.getLogger("pypdf")
+    previous_level = pypdf_logger.level
+
+    try:
+        pypdf_logger.setLevel(logging.ERROR)
+
+        reader = PdfReader(str(p))
+
+        extracted_text = "\n".join(
+            (page.extract_text() or "")
+            for page in reader.pages
+        )
+
+        if _text_is_insufficient(extracted_text):
+            print(f"   [INFO] PDF {p.name} appears to be scanned. Running OCR fallback...")
+            try:
+                ocr_text = []
+                doc = fitz.open(str(p))
+                for page_num, page in enumerate(doc):
+                    native_page_text = ""
+                    if page_num < len(reader.pages):
+                        native_page_text = reader.pages[page_num].extract_text() or ""
+                    page_text = _ocr_pdf_page(page, page_num, native_page_text)
+                    ocr_text.append(page_text)
+                extracted_text = extracted_text + "\n" + "\n".join(ocr_text)
+            except Exception as e:
+                print(f"   [WARNING] OCR fallback failed for {p.name}: {e}")
+
+        return extracted_text
+
+    finally:
+        pypdf_logger.setLevel(previous_level)
+
+
 def read_file(path: str) -> str:
     """
     Read a supported PDF, DOCX, or TXT file.
 
-    Input:
-        path -> File path.
-
-    Output:
-        Extracted plain text.
-
-    Raises:
-        Exception if the file cannot be read.
+    PDFs use pypdf first and GPT-5.6 Luna only as a fallback for
+    scanned/image-heavy pages. The returned text is then passed unchanged
+    into the existing JSON extraction pipeline.
     """
-
     p = Path(path)
 
     if p.suffix.lower() == ".pdf":
-
-        # pypdf can produce noisy logger messages for malformed PDFs.
-        # Suppress those messages without hiding real application errors.
-        pypdf_logger = logging.getLogger("pypdf")
-        previous_level = pypdf_logger.level
-
-        try:
-            pypdf_logger.setLevel(logging.ERROR)
-
-            reader = PdfReader(str(p))
-
-            extracted_text = "\n".join(
-                (page.extract_text() or "")
-                for page in reader.pages
-            )
-
-            if len(extracted_text.strip()) < 50:
-                print(f"   [INFO] PDF {p.name} appears to be scanned. Running OCR fallback...")
-                try:
-                    ocr_text = []
-                    doc = fitz.open(str(p))
-                    for page in doc:
-                        pix = page.get_pixmap()
-                        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                        page_text = pytesseract.image_to_string(img)
-                        ocr_text.append(page_text)
-                    extracted_text = "\n".join(ocr_text)
-                except Exception as e:
-                    print(f"   [WARNING] OCR fallback failed for {p.name}: {e}")
-
-            return extracted_text
-
-        finally:
-            pypdf_logger.setLevel(previous_level)
+        return _read_pdf_with_ocr(str(p))
 
     if p.suffix.lower() == ".docx":
         doc = Document(str(p))
@@ -101,15 +178,31 @@ def read_file(path: str) -> str:
 
     if p.suffix.lower() in [".png", ".jpg", ".jpeg"]:
         try:
+            if luna_client is None:
+                raise ValueError("OPENAI_API_KEY is not configured; cannot OCR image files.")
             img = Image.open(str(p))
-            text = pytesseract.image_to_string(img)
-            return text
+            from io import BytesIO
+            buffered = BytesIO()
+            img.save(buffered, format="PNG")
+            image_b64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+            response = luna_client.responses.create(
+                model=OCR_MODEL,
+                input=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "input_text", "text": "Extract all text from this resume image exactly as it appears. Do not add any formatting or commentary."},
+                        {"type": "input_image", "image_url": f"data:image/png;base64,{image_b64}"}
+                    ]
+                }]
+            )
+            return (response.output_text or "").strip()
         except Exception as e:
             raise ValueError(f"Failed to extract text from image: {e}")
 
     raise ValueError(
         f"Unsupported file type: {p.suffix}"
     )
+
 def file_hash(path: str) -> str:
     """Input: file path. Output: SHA-256 hex digest used for duplicate detection."""
     h = hashlib.sha256()
@@ -1286,7 +1379,7 @@ Assign precise numerical scores for each of the following 8 criteria, adhering s
 
 Criteria & Maximum Points:
 1. mandatory_skills_score: max 30
-2. experience_score: max 25
+2. experience_score: m ax 25
 3. domain_score: max 15
 4. preferred_skills_score: max 10
 5. education_score: max 5
@@ -1408,14 +1501,128 @@ def time_now():
 # QUERY FUNCTIONS
 # ------------------------------------------------------------
 def get_job_candidates(db: Session, job_id: UUID, limit: int = 10) -> list[dict]:
-    """Input: job UUID. Output: ranked candidate records, normally Top 10."""
-    rows = db.execute(select(JobCandidate, Candidate).join(Candidate, Candidate.id == JobCandidate.candidate_id)
-                      .where(JobCandidate.job_id == job_id, JobCandidate.is_shortlisted == True)
-                      .order_by(JobCandidate.ranking_position)).all()
-    return [{"rank": jc.ranking_position, "candidate_id": str(c.id), "name": c.name, "email": c.email,
-             "score": float(jc.overall_score or 0), "classification": jc.classification,
-             "status": jc.recruitment_status} for jc, c in rows[:limit]]
+    """
+    Input: job UUID.
+    Output: ranked candidates with complete score breakdown
+    for frontend screening card.
+    """
 
+    rows = db.execute(
+        select(JobCandidate, Candidate, ScreeningResult)
+        .join(
+            Candidate,
+            Candidate.id == JobCandidate.candidate_id
+        )
+        .join(
+            ScreeningResult,
+            ScreeningResult.job_candidate_id == JobCandidate.id
+        )
+        .where(
+            JobCandidate.job_id == job_id,
+            JobCandidate.is_shortlisted == True
+        )
+        .order_by(JobCandidate.ranking_position)
+    ).all()
+
+    results = []
+
+    for jc, candidate, screening in rows[:limit]:
+
+        # Convert weighted scores into frontend percentages.
+        # Example: 24/30 = 80%.
+        mandatory = float(screening.mandatory_skills_score or 0)
+        experience = float(screening.experience_score or 0)
+        domain = float(screening.domain_score or 0)
+        preferred = float(screening.preferred_skills_score or 0)
+        education = float(screening.education_score or 0)
+        location = float(screening.location_score or 0)
+        availability = float(screening.availability_score or 0)
+        other = float(screening.other_requirements_score or 0)
+
+        score_breakdown = {
+            "mandatory_skills": {
+                "score": mandatory,
+                "max_score": 30,
+                "percentage": round((mandatory / 30) * 100)
+            },
+            "experience": {
+                "score": experience,
+                "max_score": 25,
+                "percentage": round((experience / 25) * 100)
+            },
+            "domain": {
+                "score": domain,
+                "max_score": 15,
+                "percentage": round((domain / 15) * 100)
+            },
+            "preferred_skills": {
+                "score": preferred,
+                "max_score": 10,
+                "percentage": round((preferred / 10) * 100)
+            },
+            "education": {
+                "score": education,
+                "max_score": 5,
+                "percentage": round((education / 5) * 100)
+            },
+            "location": {
+                "score": location,
+                "max_score": 5,
+                "percentage": round((location / 5) * 100)
+            },
+            "availability": {
+                "score": availability,
+                "max_score": 5,
+                "percentage": round((availability / 5) * 100)
+            },
+            "other_requirements": {
+                "score": other,
+                "max_score": 5,
+                "percentage": round((other / 5) * 100)
+            }
+        }
+
+        # Reasoning was stored inside matching_details.
+        reasoning = None
+
+        if screening.matching_details:
+            reasoning = screening.matching_details.get("evaluation")
+
+        results.append({
+            "rank": jc.ranking_position,
+            "candidate_id": str(candidate.id),  
+            "name": candidate.name,
+            "email": candidate.email,
+
+            # Candidate information for frontend
+            "experience_years": (
+                float(candidate.total_experience_years)
+                if candidate.total_experience_years is not None
+                else None
+            ),
+            "current_company": candidate.current_company,
+            "current_role": candidate.current_role,
+            "location": candidate.location,
+            "notice_period_days": candidate.notice_period_days,
+            "skills": (
+                candidate.normalized_profile.get("skills", [])
+                if candidate.normalized_profile
+                else []
+            ),
+            # Overall result
+            "score": float(screening.total_score or 0),
+            "classification": screening.classification,
+            "status": jc.recruitment_status,
+
+            # Detailed scoring
+            "score_breakdown": score_breakdown,
+
+            # AI explanation
+            "reasoning": reasoning
+        })
+
+    return results
+ 
 def get_user_jobs(db: Session, user_id: UUID) -> list[dict]:
     """Input: authenticated user UUID. Output: only that user's JDs."""
     jobs = db.scalars(select(Job).where(Job.created_by == user_id).order_by(Job.created_at.desc())).all()
