@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import Header from '../components/Header';
+import SyncCandidatesModal from '../components/SyncCandidatesModal';
 
 export default function Candidates() {
   const [search, setSearch] = useState('');
   const [job, setJob] = useState('');
   const [stage, setStage] = useState('');
   const [score, setScore] = useState('');
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
 
   const candidates = [
     {
@@ -87,7 +89,7 @@ export default function Candidates() {
               <h1 className="mt-2 font-display text-4xl font-bold tracking-tight sm:text-5xl text-white">Candidates</h1>
               <p className="mt-3 text-base text-slate-400">Search, review and track candidates across jobs and recruitment stages.</p>
             </div>
-            <button onClick={() => alert('Candidate import flow would open here.')} className="rounded-xl bg-slate-800/80 px-5 py-3.5 text-sm font-bold text-white ring-1 ring-slate-700 hover:bg-slate-700 shadow-sm transition-all hover:-translate-y-0.5">
+            <button onClick={() => setIsSyncModalOpen(true)} className="rounded-xl bg-slate-800/80 px-5 py-3.5 text-sm font-bold text-white ring-1 ring-slate-700 hover:bg-slate-700 shadow-sm transition-all hover:-translate-y-0.5">
               + Import candidates
             </button>
           </div>
@@ -226,6 +228,15 @@ export default function Candidates() {
           </section>
         </div>
       </main>
+
+      <SyncCandidatesModal 
+        isOpen={isSyncModalOpen} 
+        onClose={() => setIsSyncModalOpen(false)} 
+        onSyncSuccess={(result) => {
+          console.log("Sync complete:", result);
+          // In a real app, you would refresh the candidate list here
+        }}
+      />
     </div>
   );
 }

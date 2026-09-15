@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import Header from "../components/Header";
 
@@ -8,6 +8,185 @@ import {
   screenJob,
 } from "../utils/api";
 
+const CRITERIA_WEIGHTS = {
+  mandatory_skills: 30,
+  experience: 25,
+  domain: 15,
+  preferred_skills: 10,
+  education: 5,
+  location: 5,
+  availability: 5,
+  other_requirements: 5
+};
+
+const formatModalLabel = (key) => {
+  return String(key)
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+};
+
+function CompareCandidatesModal({ isOpen, onClose, candidates, baseCandidateId }) {
+  const [selectedCandidateId, setSelectedCandidateId] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  if (!isOpen || !baseCandidateId) return null;
+
+  const baseCandidate = candidates.find(c => (c.candidate_id || c.id) === baseCandidateId);
+  const selectedCandidate = candidates.find(c => (c.candidate_id || c.id) === selectedCandidateId);
+
+  const filteredCandidates = candidates.filter(c => {
+    const id = c.candidate_id || c.id;
+    if (id === baseCandidateId) return false;
+    if (!searchQuery) return true;
+    return c.name?.toLowerCase().includes(searchQuery.toLowerCase());
+  });
+
+  const getNormalizedScore = (breakdown, key) => {
+    if (!breakdown || breakdown[key] === undefined) return 0;
+    if (typeof breakdown[key] === 'object' && breakdown[key] !== null) {
+      return breakdown[key].percentage || 0;
+    }
+    return 0;
+  };
+
+  const renderCandidateSummary = (candidate, isSelectable = false) => {
+    if (!candidate) return null;
+    const score = Number(candidate.score || 0).toFixed(0);
+    const classification = candidate.classification?.replace(/_/g, ' ') || 'Good Match';
+    
+    return (
+      <div className="bg-slate-800/40 rounded-xl p-5 border border-slate-700 h-full">
+        <h3 className="text-lg font-bold text-white mb-1">{candidate.name || 'Unnamed Candidate'}</h3>
+        <p className="text-xs text-slate-400 mb-4 line-clamp-2">
+          {candidate.current_role || candidate.job || 'Role unknown'} {candidate.current_company ? `@ ${candidate.current_company}` : ''} • {candidate.location || 'Location unknown'} • {candidate.total_experience_years || candidate.exp || '0 yrs'}
+        </p>
+        
+        <div className="flex items-center gap-3">
+          <span className="text-3xl font-display font-bold text-accent">{score}</span>
+          <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-1 rounded-full bg-accent/20 text-accent border border-accent/30">
+            {classification}
+          </span>
+        </div>
+        
+        {isSelectable && (
+          <button 
+            onClick={() => setSelectedCandidateId('')} 
+            className="mt-4 text-xs font-bold text-brand hover:text-brand-light transition-colors"
+          >
+            Pick someone else
+          </button>
+        )}
+      </div>
+    );
+  };
+
+  const renderComparisonRow = (key) => {
+    const label = formatModalLabel(key);
+    const weight = CRITERIA_WEIGHTS[key];
+    const baseBreakdown = baseCandidate?.score_breakdown || {};
+    const selectedBreakdown = selectedCandidate?.score_breakdown || {};
+    const baseNorm = getNormalizedScore(baseBreakdown, key);
+    const selectedNorm = getNormalizedScore(selectedBreakdown, key);
+
+    return (
+      <div key={key} className="grid grid-cols-[2fr_1fr_1fr] gap-4 py-4 border-b border-slate-700/50 items-center">
+        <div className="flex justify-between items-center pr-4">
+          <span className="text-sm font-medium text-slate-300">{label}</span>
+          <span className="text-xs text-slate-500">{weight}%</span>
+        </div>
+        
+        <div className="flex justify-end items-center gap-2">
+          <span className={`text-base font-bold ${baseNorm > selectedNorm ? 'text-accent' : 'text-white'}`}>
+            {baseNorm}
+          </span>
+          {baseNorm > selectedNorm && (
+            <svg className="w-4 h-4 text-accent" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clipRule="evenodd" />
+            </svg>
+          )}
+        </div>
+        
+        <div className="flex justify-end items-center gap-2">
+          <span className={`text-base font-bold ${selectedNorm > baseNorm ? 'text-accent' : 'text-white'}`}>
+            {selectedNorm}
+          </span>
+          {selectedNorm > baseNorm && (
+            <svg className="w-4 h-4 text-accent" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clipRule="evenodd" />
+            </svg>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fade-in">
+      <div className="bg-slate-900 border border-slate-700/50 rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-slide-up">
+        <div className="p-5 border-b border-slate-800 flex justify-between items-center shrink-0">
+          <div>
+            <h2 className="text-xl font-bold text-white">Compare candidates</h2>
+            <p className="text-xs text-slate-400 mt-1">Both candidates were scored against the same job description.</p>
+          </div>
+          <button onClick={onClose} className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 border border-slate-700 transition-all">
+            Close
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-6 scrollbar-hide">
+          <div className="grid grid-cols-2 gap-6 mb-8">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">Comparing</p>
+              {renderCandidateSummary(baseCandidate)}
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">Against</p>
+              {selectedCandidate ? (
+                renderCandidateSummary(selectedCandidate, true)
+              ) : (
+                <div className="bg-slate-800/20 rounded-xl border border-slate-700/50 h-full flex flex-col p-4">
+                  <div className="relative mb-3">
+                    <input 
+                      type="text" placeholder="Search candidate name..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full bg-slate-900 border border-brand/50 rounded-lg py-2.5 pl-3 pr-4 text-sm text-white focus:outline-none focus:ring-1 focus:ring-brand"
+                    />
+                  </div>
+                  <div className="flex-1 overflow-y-auto max-h-[140px] pr-2 space-y-1 custom-scrollbar">
+                    {filteredCandidates.map(c => (
+                      <button key={c.candidate_id || c.id} onClick={() => setSelectedCandidateId(c.candidate_id || c.id)} className="w-full flex justify-between items-center p-2 rounded hover:bg-slate-800 transition-colors text-left">
+                        <span className="text-sm font-medium text-slate-300">{c.name || 'Unnamed'}</span>
+                        <span className="text-xs font-bold text-slate-500">{Number(c.score || 0).toFixed(0)}</span>
+                      </button>
+                    ))}
+                    {filteredCandidates.length === 0 && <p className="text-xs text-slate-500 text-center py-4">No candidates found.</p>}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+          {selectedCandidate && (
+            <div className="animate-fade-in">
+              <div className="border-t border-slate-800 pt-2 mb-8">
+                {Object.keys(CRITERIA_WEIGHTS).map(key => renderComparisonRow(key))}
+              </div>
+              <div className="grid grid-cols-2 gap-6">
+                <div className="bg-slate-800/40 rounded-xl p-4 border border-slate-700/50">
+                  <p className="text-xs font-bold text-white mb-2">{baseCandidate?.name}</p>
+                  <p className="text-xs text-brand font-medium mb-2">AI Assessment Reasoning</p>
+                  <p className="text-xs text-slate-400 leading-relaxed">{baseCandidate?.reasoning || 'No specific reasoning provided by the AI.'}</p>
+                </div>
+                <div className="bg-slate-800/40 rounded-xl p-4 border border-slate-700/50">
+                  <p className="text-xs font-bold text-white mb-2">{selectedCandidate?.name}</p>
+                  <p className="text-xs text-brand font-medium mb-2">AI Assessment Reasoning</p>
+                  <p className="text-xs text-slate-400 leading-relaxed">{selectedCandidate?.reasoning || 'No specific reasoning provided by the AI.'}</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function MatchAgent() {
 
@@ -56,6 +235,9 @@ export default function MatchAgent() {
 
   const [expandedDetails, setExpandedDetails] =
     useState({});
+
+  const [compareModalOpen, setCompareModalOpen] = useState(false);
+  const [compareBaseCandidate, setCompareBaseCandidate] = useState(null);
 
   const [contacted, setContacted] =
     useState({});
@@ -1295,7 +1477,16 @@ export default function MatchAgent() {
                           <button onClick={() => toggleDetails(candidateKey)} className="text-xs font-bold text-slate-400 hover:text-white transition-colors px-2 py-1">
                             {expandedDetails[candidateKey] ? "Hide details ↑" : "View details ↓"}
                           </button>
-                          <button onClick={() => handleContact(candidateKey)} disabled={contacted[candidateKey]} className={`rounded-xl px-4 py-2 text-xs font-bold transition-all ${contacted[candidateKey] ? "bg-accent/20 text-accent border border-accent/30" : "bg-slate-800 text-white hover:bg-slate-700 border border-slate-700"}`}>
+                          <button 
+                            onClick={() => {
+                              setCompareBaseCandidate(candidate.candidate_id || candidate.id || candidateKey);
+                              setCompareModalOpen(true);
+                            }} 
+                            className="rounded-xl px-4 py-2 text-xs font-bold transition-all bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 border border-slate-700"
+                          >
+                            Compare
+                          </button>
+                          <button onClick={() => handleContact(candidateKey)} disabled={contacted[candidateKey]} className={`rounded-xl px-4 py-2 text-xs font-bold transition-all ${contacted[candidateKey] ? "bg-accent/20 text-accent border border-accent/30" : "bg-brand text-white hover:bg-brand-light shadow-sm"}`}>
                             {contacted[candidateKey] ? "✓ Added to outreach" : "Add to outreach"}
                           </button>
                           <button type="button" disabled={!phone} onClick={() => {
@@ -1383,6 +1574,13 @@ export default function MatchAgent() {
         </div>
 
       </main>
+
+      <CompareCandidatesModal 
+        isOpen={compareModalOpen} 
+        onClose={() => setCompareModalOpen(false)} 
+        candidates={candidates} 
+        baseCandidateId={compareBaseCandidate} 
+      />
 
     </div>
   );

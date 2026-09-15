@@ -5,6 +5,10 @@ required for this deterministic pipeline.
 """
 import hashlib, json, re, time, logging, os, base64
 from pathlib import Path
+import shutil
+import tempfile
+import zipfile
+import gdown
 from uuid import UUID
 from sqlalchemy import select, delete, text
 from sqlalchemy.orm import Session
@@ -825,12 +829,13 @@ def looks_like_job_description(text: str, filename: str) -> bool:
 #     # ingest resume folder 
 # -------------------------------------------
 
-def ingest_resume_folder(db: Session) -> dict:
+def ingest_resume_folder(db: Session, custom_dir: str = None) -> dict:
     """
     Scan the resume folder and ingest every supported CV.
 
     Input:
         db -> SQLAlchemy PostgreSQL database session
+        custom_dir -> Optional path to scan instead of settings.RESUME_DIR
 
     Output:
         Dictionary containing:
@@ -848,7 +853,7 @@ def ingest_resume_folder(db: Session) -> dict:
         5. Continue even when Pinecone fails.
     """
 
-    resume_dir = Path(settings.RESUME_DIR)
+    resume_dir = Path(custom_dir) if custom_dir else Path(settings.RESUME_DIR)
 
     if not resume_dir.exists():
 
@@ -1025,6 +1030,36 @@ def ingest_resume_folder(db: Session) -> dict:
         "failed": failed,
         "failed_files": failed_files,
     }
+
+def sync_google_drive(db: Session, url: str) -> dict:
+    """
+    Sync resumes from a Google Drive URL.
+    Assuming the URL points to a shared Folder or a ZIP file.
+    """
+    temp_dir = tempfile.mkdtemp()
+    
+    try:
+        if "drive.google.com/drive/folders/" in url:
+            gdown.download_folder(url, output=temp_dir, quiet=False, use_cookies=False)
+            return ingest_resume_folder(db, custom_dir=temp_dir)
+        else:
+            output_path = os.path.join(temp_dir, "downloaded")
+            gdown.download(url, output=output_path, quiet=False, fuzzy=True)
+            
+            if zipfile.is_zipfile(output_path):
+                with zipfile.ZipFile(output_path, 'r') as zip_ref:
+                    zip_ref.extractall(temp_dir)
+                os.remove(output_path)
+            
+            return ingest_resume_folder(db, custom_dir=temp_dir)
+    except Exception as e:
+        return {
+            "status": "FAILED",
+            "message": f"Failed to download or process Google Drive link: {str(e)}",
+            "total": 0, "successful": 0, "skipped": 0, "failed": 0, "failed_files": []
+        }
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
 # ------------------------------------------------------------
 # JD CREATION
 # ------------------------------------------------------------
@@ -1379,7 +1414,7 @@ Assign precise numerical scores for each of the following 8 criteria, adhering s
 
 Criteria & Maximum Points:
 1. mandatory_skills_score: max 30
-2. experience_score: m ax 25
+2. experience_score: max 25
 3. domain_score: max 15
 4. preferred_skills_score: max 10
 5. education_score: max 5

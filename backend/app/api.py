@@ -740,10 +740,11 @@ Recruiter approval:
     Admin must approve them before they can log in.
 """
 
-from NMHireX.backend.app.auth import require_admin
+from .auth import require_admin
 from pathlib import Path
 from uuid import UUID
 
+from pydantic import BaseModel
 from fastapi import (
     APIRouter,
     Depends,
@@ -760,6 +761,7 @@ from .models import User, Job
 
 from .tool_functions import (
     ingest_resume_folder,
+    sync_google_drive,
     create_job,
     screen_job,
     get_user_jobs,
@@ -1042,18 +1044,24 @@ def api_reject_recruiter(
         "email": user.email,
         "status": user.status
     }
+class SyncRequest(BaseModel):
+    source: str
+    path_or_url: str
+
 @router.post("/resumes/ingest")
 def api_ingest_resumes(
-    admin: User = Depends(require_admin),
+    request: SyncRequest,
+    admin: User = Depends(auth_require_admin),
     db: Session = Depends(get_db),
 ):
     """
     Admin-only resume ingestion.
-
-    Scans the configured resume directory and ingests resumes.
+    Supports local folders or Google Drive URLs.
     """
-
-    return ingest_resume_folder(db)
+    if request.source == "gdrive":
+        return sync_google_drive(db, request.path_or_url)
+    else:
+        return ingest_resume_folder(db, custom_dir=request.path_or_url)
 
 
 # ============================================================

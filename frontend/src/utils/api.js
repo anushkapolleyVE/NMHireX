@@ -14,11 +14,11 @@ const getUserId = () => {
 };
 
 const getHeaders = () => {
-  const userId = getUserId();
+  const token = localStorage.getItem("accessToken");
 
-  return userId
+  return token
     ? {
-        "X-User-Id": userId,
+        "Authorization": `Bearer ${token}`,
       }
     : {};
 };
@@ -169,6 +169,35 @@ export const getJobCandidates = async (jobId) => {
       await getErrorMessage(
         response,
         "Failed to fetch candidates."
+      )
+    );
+  }
+
+  return response.json();
+};
+
+// --------------------------------------------------
+// SYNC CANDIDATES
+// --------------------------------------------------
+
+export const syncCandidates = async (source, pathOrUrl) => {
+  const response = await fetch(`${API_BASE_URL}/resumes/ingest`, {
+    method: "POST",
+    headers: {
+      ...getHeaders(),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      source: source,
+      path_or_url: pathOrUrl,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      await getErrorMessage(
+        response,
+        "Failed to sync candidates."
       )
     );
   }
