@@ -1,6 +1,7 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+import AdminDashboard from './pages/AdminDashboard';
 import MatchAgent from './pages/MatchAgent';
 import Candidates from './pages/Candidates';
 import Outreach from './pages/Outreach';
@@ -13,10 +14,12 @@ function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
 
+      <Route path="/admin" element={<AdminDashboard />} />
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/match-agent" element={<MatchAgent />} />
       <Route path="/candidates" element={<Candidates />} />
       <Route path="/outreach" element={<Outreach />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

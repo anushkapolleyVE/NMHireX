@@ -42,7 +42,7 @@ from .auth import (
     verify_password,
     create_access_token,
     get_current_user,
-    require_admin,
+    require_admin as auth_require_admin,
 )
 
 router = APIRouter(prefix="/api")
@@ -163,6 +163,53 @@ def login(
         },
     }
 
+@router.post("/auth/login/recruiter")
+def login_recruiter(
+    name: str = Form(...),
+    email: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    user = db.query(User).filter(
+        User.email == email,
+        User.role == "RECRUITER"
+    ).first()
+
+    if not user or user.name.lower() != name.lower():
+        raise HTTPException(
+            status_code=401,
+            detail="Recruiter not found. Please register first.",
+        )
+        
+    if getattr(user, 'status', 'APPROVED') == "PENDING":
+        raise HTTPException(
+            status_code=403,
+            detail="Your account is pending admin approval."
+        )
+    elif getattr(user, 'status', 'APPROVED') == "REJECTED":
+        raise HTTPException(
+            status_code=403,
+            detail="Your access has been rejected by the admin."
+        )
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=403,
+            detail="User account is inactive",
+        )
+
+    token = create_access_token(user)
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": {
+            "id": str(user.id),
+            "name": user.name,
+            "email": user.email,
+            "role": user.role,
+        },
+    }
+
 @router.get("/auth/me")
 def me(
     user: User = Depends(get_current_user),
@@ -173,6 +220,72 @@ def me(
         "email": user.email,
         "role": user.role,
         "is_active": user.is_active,
+    }
+
+
+# ============================================================
+# RECRUITER MANAGEMENT (ADMIN ONLY)
+# ============================================================
+
+@router.get("/admin/recruiters")
+def api_get_recruiters(
+    admin: User = Depends(auth_require_admin),
+    db: Session = Depends(get_db),
+):
+    recruiters = db.query(User).filter(User.role == "RECRUITER").order_by(User.created_at.desc()).all()
+    return [
+        {
+            "id": str(r.id),
+            "name": r.name,
+            "email": r.email,
+            "role": r.role,
+            "status": getattr(r, 'status', 'PENDING'),
+            "is_active": r.is_active,
+            "created_at": r.created_at
+        }
+        for r in recruiters
+    ]
+
+@router.post("/admin/recruiters/{user_id}/approve")
+def api_approve_recruiter(
+    user_id: UUID,
+    admin: User = Depends(auth_require_admin),
+    db: Session = Depends(get_db),
+):
+    user = db.get(User, user_id)
+    if not user or user.role != "RECRUITER":
+        raise HTTPException(status_code=404, detail="Recruiter not found")
+        
+    user.status = "APPROVED"
+    db.commit()
+    
+    return {
+        "message": "Recruiter approved successfully",
+        "user_id": str(user.id),
+        "name": user.name,
+        "email": user.email,
+        "status": user.status
+    }
+
+@router.post("/admin/recruiters/{user_id}/reject")
+def api_reject_recruiter(
+    user_id: UUID,
+    admin: User = Depends(auth_require_admin),
+    db: Session = Depends(get_db),
+):
+    user = db.get(User, user_id)
+    if not user or user.role != "RECRUITER":
+        raise HTTPException(status_code=404, detail="Recruiter not found")
+        
+    user.status = "REJECTED"
+    db.commit()
+    
+    return {
+        "message": "Recruiter rejected",
+        "user_id": str(user.id),
+        "name": user.name,
+        "email": user.email,
+        "status": user.status
     }
 @router.post("/resumes/ingest")
 def api_ingest_resumes(

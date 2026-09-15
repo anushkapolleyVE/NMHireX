@@ -273,7 +273,6 @@ export default function MatchAgent() {
         rankedCandidates
       );
 
-
       setSearchComplete(true);
 
       setStatus("Screening");
@@ -301,6 +300,7 @@ export default function MatchAgent() {
     }
   };
 
+  
 
   // ==========================================================
   // DETAILS
