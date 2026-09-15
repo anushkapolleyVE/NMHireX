@@ -28,6 +28,7 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(20),default="PENDING",nullable=False)
 # ============================================================
 # JOBS
 # One row per JD uploaded by a user. created_by is the uploader.
@@ -126,10 +127,10 @@ class CandidateSource(Base):
     fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     __table_args__ = (UniqueConstraint("source_name", "external_candidate_id", name="uq_candidate_source"),)
 
-# ============================================================
+# =================================================================
 # RESUMES
 # Resume metadata, original extracted text, and AI extraction JSON.
-# ============================================================
+# ===================================================================
 class Resume(Base):
     __tablename__ = "resumes"
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
