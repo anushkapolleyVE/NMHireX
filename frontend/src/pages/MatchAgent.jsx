@@ -1,6 +1,8 @@
 import { useState, useMemo, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import Header from "../components/Header";
+import ProfileModal from "../components/ProfileModal";
+import SyncCandidatesModal from "../components/SyncCandidatesModal";
 
 import {
   createJob,
@@ -320,6 +322,8 @@ export default function MatchAgent() {
   const [candidatesModalOpen, setCandidatesModalOpen] = useState(
     !!(location.state?.autoSearch && location.state?.isScreened)
   );
+  const [selectedCandidate, setSelectedCandidate] = useState(null);
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
 
   // ==========================================================
   // ROUTE STATE (AUTO-LOAD FROM DASHBOARD)
@@ -802,8 +806,22 @@ export default function MatchAgent() {
         }}
       ></div>
 
-
       <Header />
+      
+      <ProfileModal 
+        isOpen={!!selectedCandidate} 
+        onClose={() => setSelectedCandidate(null)} 
+        candidate={selectedCandidate} 
+      />
+
+      <SyncCandidatesModal 
+        isOpen={isSyncModalOpen} 
+        onClose={() => setIsSyncModalOpen(false)} 
+        onSyncSuccess={() => {
+          setIsSyncModalOpen(false);
+          // Auto-search or refresh candidates if needed, for now just close
+        }}
+      />
 
 
       
@@ -887,8 +905,12 @@ export default function MatchAgent() {
                         )}
 
                         <div className="mt-5 flex items-center justify-end gap-3 border-t border-slate-700/50 pt-4">
-                          <button onClick={() => toggleDetails(candidateKey)} className="text-xs font-bold text-slate-400 hover:text-white transition-colors px-2 py-1">
-                            {expandedDetails[candidateKey] ? "Hide details ↑" : "View details ↓"}
+                          <button 
+                            onClick={() => setSelectedCandidate(candidate)} 
+                            className="flex items-center gap-2 rounded-xl border border-slate-700 px-4 py-2 text-xs font-bold text-slate-300 hover:bg-slate-800 hover:text-white transition-colors whitespace-nowrap"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                            View Profile
                           </button>
                           <button 
                             onClick={() => {
@@ -915,16 +937,7 @@ export default function MatchAgent() {
                           </button>
                         </div>
 
-                        {expandedDetails[candidateKey] && (
-                          <div className="mt-4 rounded-xl bg-slate-900/80 p-4 text-xs leading-relaxed border border-slate-800">
-                            <p className="text-slate-300"><strong className="text-white">Candidate:</strong>{" "}{candidate.name || "Unnamed Candidate"}</p>
-                            {candidate.email && <p className="mt-2 text-slate-300"><strong className="text-white">Email:</strong>{" "}{candidate.email}</p>}
-                            <p className="mt-2 text-slate-300"><strong className="text-white">Screening score:</strong>{" "}{score.toFixed(1)}/100</p>
-                            {candidate.classification && <p className="mt-2 text-slate-300"><strong className="text-white">Classification:</strong>{" "}{getClassificationLabel(candidate.classification)}</p>}
-                            {candidate.phone && <p className="mt-2 text-slate-300"><strong className="text-white">Phone:</strong>{" "}{candidate.phone}</p>}
-                            {candidate.reasoning && <p className="mt-3 text-slate-300"><strong className="text-white">Reasoning:</strong>{" "}{candidate.reasoning}</p>}
-                          </div>
-                        )}
+                        {/* Inline details removed in favor of ProfileModal */}
                       </div>
                     );
                   })}
@@ -1017,12 +1030,20 @@ export default function MatchAgent() {
             </div>
 
 
-            <Link
-              to="/dashboard"
-              className="rounded-xl bg-slate-800/80 px-5 py-3 text-sm font-bold text-white ring-1 ring-slate-700 hover:bg-slate-700 transition-all"
-            >
-              ← Back to Dashboard
-            </Link>
+            <div className="flex gap-4">
+              <button 
+                onClick={() => setIsSyncModalOpen(true)}
+                className="rounded-xl bg-slate-800/80 px-5 py-3 text-sm font-bold text-white ring-1 ring-slate-700 hover:bg-slate-700 transition-all shadow-sm"
+              >
+                + Import candidates
+              </button>
+              <Link
+                to="/dashboard"
+                className="rounded-xl bg-slate-800/80 px-5 py-3 text-sm font-bold text-white ring-1 ring-slate-700 hover:bg-slate-700 transition-all shadow-sm"
+              >
+                ← Back to Dashboard
+              </Link>
+            </div>
 
           </div>
 

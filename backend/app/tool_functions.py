@@ -1650,6 +1650,11 @@ def get_job_candidates(db: Session, job_id: UUID, limit: int = 10) -> list[dict]
                 if candidate.normalized_profile
                 else []
             ),
+            "experience_details": (
+                candidate.normalized_profile.get("experiences", [])
+                if candidate.normalized_profile
+                else []
+            ),
             # Overall result
             "score": float(screening.total_score or 0),
             "classification": screening.classification,
@@ -1850,7 +1855,9 @@ def get_all_candidates(db: Session, user_id: UUID) -> list[dict]:
             "scoreLabel": scoreLabel,
             "job": job_title,
             "skills": ", ".join([s.get("name") or s.get("skill") or s.get("skill_name") or str(s) if isinstance(s, dict) else str(s) for s in candidate.normalized_profile.get("skills", [])][:5]) if candidate.normalized_profile and candidate.normalized_profile.get("skills") else "-",
-            "stage": stage
+            "stage": stage,
+            "experience_details": candidate.normalized_profile.get("experiences", []) if candidate.normalized_profile else [],
+            "all_skills": candidate.normalized_profile.get("skills", []) if candidate.normalized_profile else []
         })
     return results
 
