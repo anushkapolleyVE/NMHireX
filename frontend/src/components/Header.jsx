@@ -1,7 +1,22 @@
 import { Link, useLocation } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 
 export default function Header({ showNav = true }) {
   const location = useLocation();
+  const [userName, setUserName] = useState('User');
+
+  useEffect(() => {
+    const role = localStorage.getItem('userRole');
+    const name = localStorage.getItem('userName');
+    
+    if (role === 'ADMIN' || role === 'admin') {
+      setUserName('Admin');
+    } else if (name) {
+      setUserName(name);
+    }
+  }, []);
+
+  const firstLetter = userName ? userName.charAt(0).toUpperCase() : 'U';
 
   const navItems = [
     { name: 'Dashboard', path: '/dashboard' },
@@ -49,9 +64,9 @@ export default function Header({ showNav = true }) {
               <>
                 <div className="hidden items-center gap-2 sm:flex">
                   <span className="grid size-8 place-items-center rounded-full bg-gradient-to-br from-brand to-accent text-xs font-bold text-white shadow-[0_0_10px_rgba(59,130,246,0.4)]">
-                    S
+                    {firstLetter}
                   </span>
-                  <span className="text-sm font-semibold text-white">Sheela</span>
+                  <span className="text-sm font-semibold text-white">{userName}</span>
                 </div>
                 <Link to="/" className="rounded-xl bg-slate-800/80 px-3 py-2 text-xs font-bold text-slate-300 ring-1 ring-slate-700 hover:text-white hover:bg-slate-700 transition-all">
                   Sign out

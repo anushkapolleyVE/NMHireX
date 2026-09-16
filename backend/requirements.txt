@@ -13,6 +13,9 @@ openai
 
 # Retry/backoff for transient rate-limit / connection errors.
 tenacity
+
+Pillow
 python-jose[cryptography]
 bcrypt
+gdown
  
