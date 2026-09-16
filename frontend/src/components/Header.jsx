@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 export default function Header({ showNav = true }) {
   const location = useLocation();
   const [userName, setUserName] = useState('User');
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     const role = localStorage.getItem('userRole');
@@ -11,6 +12,7 @@ export default function Header({ showNav = true }) {
     
     if (role === 'ADMIN' || role === 'admin') {
       setUserName('Admin');
+      setIsAdmin(true);
     } else if (name) {
       setUserName(name);
     }
@@ -22,7 +24,8 @@ export default function Header({ showNav = true }) {
     { name: 'Dashboard', path: '/dashboard' },
     { name: 'Match Agent', path: '/match-agent' },
     { name: 'Outreach', path: '/outreach' },
-    { name: 'Candidates', path: '/candidates' }
+    { name: 'Candidates', path: '/candidates' },
+    ...(isAdmin ? [{ name: 'Recruiters', path: '/admin' }] : [])
   ];
 
   return (
