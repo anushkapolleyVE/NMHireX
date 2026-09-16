@@ -1474,12 +1474,17 @@ def screen_job(db: Session, job_id: UUID) -> dict:
             result = db.execute(text(sql_query))
             candidate_ids = [UUID(str(row[0])) for row in result.fetchall()]
         except Exception as e:
-            print(f"SQL execution failed: {e}. Falling back to all candidates.")
+            print(f"SQL execution failed: {e}. Skipping scoring.")
             candidate_ids = []
             
         if not candidate_ids:
-            candidates = db.scalars(select(Candidate)).all()
-            candidate_ids = [c.id for c in candidates]
+            print("No candidates found via NL to SQL. Skipping scoring.")
+            run.status = "COMPLETED"
+            run.current_stage = "COMPLETED"
+            run.completed_at = time_now()
+            job.status = "ACTIVE"
+            db.commit()
+            return {"job_id": str(job.id), "candidates_evaluated": 0, "top_10": []}
             
         candidate_ids = list(set(candidate_ids))
         run.total_candidates = len(candidate_ids); run.current_stage = "EVALUATING"; db.commit()
