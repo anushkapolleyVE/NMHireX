@@ -26,7 +26,7 @@ app.add_middleware(
         "http://localhost:5174",
         "http://127.0.0.1:5174",
         "https://nm-hire-x.vercel.app",
-        "https://nmhirex-new2-liart.vercel.app",
+        "https://nm-hire-x-omega.vercel.app",
         
     ],
     allow_credentials=True,
