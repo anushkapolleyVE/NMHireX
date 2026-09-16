@@ -1055,11 +1055,11 @@ class SyncRequest(BaseModel):
 @router.post("/resumes/ingest")
 def api_ingest_resumes(
     request: SyncRequest,
-    admin: User = Depends(auth_require_admin),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
-    Admin-only resume ingestion.
+    Resume ingestion for recruiters and admins.
     Supports local folders or Google Drive URLs.
     """
     if request.source == "gdrive":

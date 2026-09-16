@@ -42,21 +42,14 @@ class Settings(BaseSettings):
     # --- Database ---
     DATABASE_URL: str
 
-    # --- Groq (LLM extraction + evaluation) ---
-    # Get a free key at https://console.groq.com/keys
-    GROQ_API_KEY: str
-    GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
-
-    # OpenAI (GPT-5.6 Luna vision/OCR fallback for image-based CV content).
+    # OpenAI (GPT-5.6 model for extraction, evaluation, and OCR)
     OPENAI_API_KEY: str = ""
 
-    # Groq model used for structured JSON extraction (JD + resume).
-    # openai/gpt-oss-120b = higher quality, slower/costlier.
-    # openai/gpt-oss-20b  = faster/cheaper, use if 120b hits rate limits often.
-    EXTRACTION_MODEL: str = "openai/gpt-oss-120b"
+    # Model used for structured JSON extraction (JD + resume).
+    EXTRACTION_MODEL: str = "gpt-4o"
 
-    # Groq model used for candidate evaluation (boolean satisfaction flags).
-    EVALUATION_MODEL: str = "openai/gpt-oss-120b"
+    # Model used for candidate evaluation (boolean satisfaction flags).
+    EVALUATION_MODEL: str = "gpt-4o"
 
     # --- Search / ranking (3-stage funnel) ---
     TOP_K_VECTOR: int = 150      # fallback semantic search width, used only if stage 1 finds nobody

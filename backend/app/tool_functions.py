@@ -10,9 +10,6 @@ import zipfile
 
 import hashlib, json, re, time, logging, os, base64
 from pathlib import Path
-import shutil
-import tempfile
-import zipfile
 import gdown
 from uuid import UUID
 from sqlalchemy import select, delete, text
@@ -20,23 +17,20 @@ from sqlalchemy.orm import Session
 from openai import OpenAI
 from pypdf import PdfReader
 from docx import Document
-import fitz
+import pymupdf
 from PIL import Image
-import pymupdf  
 from .config import settings
 from .models import (User, Job, JobRequirement, Candidate, Resume, CandidateSkill,
     CandidateExperience, CandidateEducation, CandidateCertification, CandidateProject,
     JobCandidate, ScreeningResult, ScreeningRun, AIExtractionLog)
 
-openai_client = OpenAI(api_key=settings.GROQ_API_KEY, base_url=settings.GROQ_BASE_URL)
-
-# Separate OpenAI client used ONLY for OCR/vision fallback.
-# Existing Groq client and JSON extraction flow are unchanged.
-OCR_MODEL = "gpt-5.6-luna"
-
 OPENAI_API_KEY = settings.OPENAI_API_KEY
 
-luna_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+luna_client = openai_client
+
+OCR_MODEL = "gpt-4o"
+
 
 # ------------------------------------------------------------
 # FILE HELPERS
@@ -66,8 +60,7 @@ def _ocr_pdf_page(page, page_number: int, native_text: str) -> str:
         return ""
 
     try:
-        # ~144 DPI is normally enough for CV text while keeping image size reasonable.
-        pix = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+        pix = page.get_pixmap(matrix=pymupdf.Matrix(2, 2), alpha=False)
         image_bytes = pix.tobytes("png")
         image_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
@@ -133,7 +126,7 @@ def _read_pdf_with_ocr(path: str) -> str:
             print(f"   [INFO] PDF {p.name} appears to be scanned. Running OCR fallback...")
             try:
                 ocr_text = []
-                doc = fitz.open(str(p))
+                doc = pymupdf.open(str(p))
                 for page_num, page in enumerate(doc):
                     native_page_text = ""
                     if page_num < len(reader.pages):
@@ -457,12 +450,12 @@ def store_resume(db: Session, path: str) -> UUID:
         # We still ingest the resume.
         text = ""
     if text.strip() and looks_like_job_description(
-    text,
-    path_obj.name
+        text,
+        path_obj.name
     ):
         raise ValueError(
-        "File appears to be a Job Description, not a resume"
-    )
+            "File appears to be a Job Description, not a resume"
+        )
     # ---------------------------------------------------------
     # 3. Extract resume information
     # ---------------------------------------------------------
@@ -1479,12 +1472,17 @@ def screen_job(db: Session, job_id: UUID) -> dict:
             result = db.execute(text(sql_query))
             candidate_ids = [UUID(str(row[0])) for row in result.fetchall()]
         except Exception as e:
-            print(f"SQL execution failed: {e}. Falling back to all candidates.")
+            print(f"SQL execution failed: {e}. Skipping scoring.")
             candidate_ids = []
             
         if not candidate_ids:
-            candidates = db.scalars(select(Candidate)).all()
-            candidate_ids = [c.id for c in candidates]
+            print("No candidates found via NL to SQL. Skipping scoring.")
+            run.status = "COMPLETED"
+            run.current_stage = "COMPLETED"
+            run.completed_at = time_now()
+            job.status = "ACTIVE"
+            db.commit()
+            return {"job_id": str(job.id), "candidates_evaluated": 0, "top_10": []}
             
         candidate_ids = list(set(candidate_ids))
         run.total_candidates = len(candidate_ids); run.current_stage = "EVALUATING"; db.commit()
@@ -1826,7 +1824,17 @@ def get_all_candidates(db: Session, user_id: UUID) -> list[dict]:
             stage = jc.recruitment_status
             if screening and screening.total_score:
                 score = float(screening.total_score)
-                scoreLabel = screening.classification
+                lbl = str(screening.classification).replace("_", " ").title() if screening.classification else "-"
+                if "Do Not Prioritize" in lbl:
+                    scoreLabel = "Low Match"
+                elif "Moderate" in lbl:
+                    scoreLabel = "Moderate Match"
+                elif "Strong" in lbl:
+                    scoreLabel = "Strong Match"
+                elif "Excellent" in lbl:
+                    scoreLabel = "Excellent Match"
+                else:
+                    scoreLabel = lbl
                 
         results.append({
             "id": str(candidate.id),
@@ -1839,7 +1847,7 @@ def get_all_candidates(db: Session, user_id: UUID) -> list[dict]:
             "score": score,
             "scoreLabel": scoreLabel,
             "job": job_title,
-            "skills": ", ".join([s.get("name", str(s)) if isinstance(s, dict) else str(s) for s in candidate.normalized_profile.get("skills", [])][:5]) if candidate.normalized_profile and candidate.normalized_profile.get("skills") else "-",
+            "skills": ", ".join([s.get("name") or s.get("skill") or s.get("skill_name") or str(s) if isinstance(s, dict) else str(s) for s in candidate.normalized_profile.get("skills", [])][:5]) if candidate.normalized_profile and candidate.normalized_profile.get("skills") else "-",
             "stage": stage
         })
     return results
