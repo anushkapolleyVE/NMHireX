@@ -28,6 +28,7 @@ app.add_middleware(
         "https://nm-hire-x.vercel.app",
         "https://nmhirex-new2-1o5izrkmq-yugen5.vercel.app",
     ],
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
