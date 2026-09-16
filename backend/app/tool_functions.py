@@ -10,9 +10,6 @@ import zipfile
 
 import hashlib, json, re, time, logging, os, base64
 from pathlib import Path
-import shutil
-import tempfile
-import zipfile
 import gdown
 from uuid import UUID
 from sqlalchemy import select, delete, text
@@ -20,9 +17,8 @@ from sqlalchemy.orm import Session
 from openai import OpenAI
 from pypdf import PdfReader
 from docx import Document
-import fitz
+import pymupdf
 from PIL import Image
-import pymupdf  
 from .config import settings
 from .models import (User, Job, JobRequirement, Candidate, Resume, CandidateSkill,
     CandidateExperience, CandidateEducation, CandidateCertification, CandidateProject,
@@ -66,8 +62,7 @@ def _ocr_pdf_page(page, page_number: int, native_text: str) -> str:
         return ""
 
     try:
-        # ~144 DPI is normally enough for CV text while keeping image size reasonable.
-        pix = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+        pix = page.get_pixmap(matrix=pymupdf.Matrix(2, 2), alpha=False)
         image_bytes = pix.tobytes("png")
         image_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
@@ -133,7 +128,7 @@ def _read_pdf_with_ocr(path: str) -> str:
             print(f"   [INFO] PDF {p.name} appears to be scanned. Running OCR fallback...")
             try:
                 ocr_text = []
-                doc = fitz.open(str(p))
+                doc = pymupdf.open(str(p))
                 for page_num, page in enumerate(doc):
                     native_page_text = ""
                     if page_num < len(reader.pages):
@@ -457,12 +452,12 @@ def store_resume(db: Session, path: str) -> UUID:
         # We still ingest the resume.
         text = ""
     if text.strip() and looks_like_job_description(
-    text,
-    path_obj.name
+        text,
+        path_obj.name
     ):
         raise ValueError(
-        "File appears to be a Job Description, not a resume"
-    )
+            "File appears to be a Job Description, not a resume"
+        )
     # ---------------------------------------------------------
     # 3. Extract resume information
     # ---------------------------------------------------------
