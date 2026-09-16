@@ -188,6 +188,71 @@ function CompareCandidatesModal({ isOpen, onClose, candidates, baseCandidateId }
   );
 }
 
+function WhatsappInviteModal({ isOpen, onClose, candidate, onSend }) {
+  if (!isOpen || !candidate) return null;
+
+  const roleText = candidate.current_role || candidate.job || '';
+  const companyText = candidate.current_company ? `@ ${candidate.current_company}` : '';
+  const locationText = candidate.location ? `- ${candidate.location}` : '';
+  const subtitleArr = [];
+  if (roleText) subtitleArr.push(roleText);
+  if (companyText) subtitleArr.push(companyText);
+  if (locationText) subtitleArr.push(locationText);
+  const subtitleFinal = subtitleArr.join(' ');
+
+  const handleSend = async () => {
+    if (candidate.phone) {
+      window.open(`https://wa.me/${candidate.phone}`, "_blank", "noopener,noreferrer");
+      if (onSend) {
+        await onSend(candidate);
+      }
+    }
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-[24px] bg-white p-6 shadow-2xl relative animate-in fade-in zoom-in-95 duration-200">
+        <div className="flex gap-4 items-start mb-6">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-green-50 text-green-500">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+          </div>
+          <div className="pt-1 text-left">
+            <h2 className="text-xl font-bold text-slate-800">Send WhatsApp invite</h2>
+            <p className="mt-1 text-sm text-slate-500">Confirm the number before it goes out.</p>
+          </div>
+        </div>
+
+        <div className="mb-6 rounded-2xl bg-slate-50 p-5 border border-slate-100 text-left">
+          <h3 className="text-lg font-bold text-slate-800">{candidate.name || 'Unnamed Candidate'}</h3>
+          {subtitleFinal && <p className="mt-1 text-sm font-medium text-slate-500">{subtitleFinal}</p>}
+          <p className="mt-4 text-xl font-bold text-slate-800">{candidate.phone || 'No phone number'}</p>
+        </div>
+
+        <p className="mb-8 text-sm leading-relaxed text-slate-500 text-left">
+          They'll receive a short message asking whether they're interested in the role. You can record their reply on this card afterwards.
+        </p>
+
+        <div className="flex justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSend}
+            disabled={!candidate.phone}
+            className="rounded-xl bg-green-500 px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Send invite
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function MatchAgent() {
 
   // ==========================================================
@@ -238,6 +303,9 @@ export default function MatchAgent() {
 
   const [compareModalOpen, setCompareModalOpen] = useState(false);
   const [compareBaseCandidate, setCompareBaseCandidate] = useState(null);
+
+  const [whatsappModalOpen, setWhatsappModalOpen] = useState(false);
+  const [selectedWhatsappCandidate, setSelectedWhatsappCandidate] = useState(null);
 
   const [contacted, setContacted] =
     useState({});
@@ -1489,10 +1557,10 @@ export default function MatchAgent() {
                           <button onClick={() => handleContact(candidateKey)} disabled={contacted[candidateKey]} className={`rounded-xl px-4 py-2 text-xs font-bold transition-all ${contacted[candidateKey] ? "bg-accent/20 text-accent border border-accent/30" : "bg-brand text-white hover:bg-brand-light shadow-sm"}`}>
                             {contacted[candidateKey] ? "✓ Added to outreach" : "Add to outreach"}
                           </button>
-                          <button type="button" disabled={!phone} onClick={() => {
-                            if (!phone) return;
-                            window.open(`https://wa.me/${phone}`, "_blank", "noopener,noreferrer");
-                          }} className="rounded-xl bg-green-600 px-4 py-2 text-xs font-bold text-white transition-all hover:bg-green-500 disabled:cursor-not-allowed disabled:opacity-40">
+                          <button type="button" onClick={() => {
+                            setSelectedWhatsappCandidate(candidate);
+                            setWhatsappModalOpen(true);
+                          }} className="rounded-xl bg-green-600 px-4 py-2 text-xs font-bold text-white transition-all hover:bg-green-500">
                             WhatsApp
                           </button>
                         </div>
@@ -1580,6 +1648,19 @@ export default function MatchAgent() {
         onClose={() => setCompareModalOpen(false)} 
         candidates={candidates} 
         baseCandidateId={compareBaseCandidate} 
+      />
+
+      <WhatsappInviteModal
+        isOpen={whatsappModalOpen}
+        onClose={() => setWhatsappModalOpen(false)}
+        candidate={selectedWhatsappCandidate}
+        onSend={async (c) => {
+          try {
+            await markCandidateContacted(selectedJobId, c.candidate_id || c.id);
+          } catch (err) {
+            console.error('Failed to mark contacted', err);
+          }
+        }}
       />
 
     </div>

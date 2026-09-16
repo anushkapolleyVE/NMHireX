@@ -769,6 +769,10 @@ from .tool_functions import (
     get_admin_jobs,
     get_admin_job_candidates,
     read_file,
+    get_user_dashboard,
+    mark_candidate_contacted,
+    get_all_candidates,
+    get_outreach_campaigns,
 )
 
 from .config import settings
@@ -1395,6 +1399,38 @@ def api_screen_job(
 
 
 # ============================================================
+# RECRUITER - DASHBOARD
+# ============================================================
+
+
+@router.get("/user/dashboard")
+def api_user_dashboard(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Return dashboard stats and pipeline for the recruiter.
+    """
+
+    if user.role not in ["RECRUITER", "ADMIN"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Recruiter access required",
+        )
+
+    if user.status != "APPROVED":
+        raise HTTPException(
+            status_code=403,
+            detail="Recruiter account is not approved",
+        )
+
+    return get_user_dashboard(
+        db,
+        user.id,
+    )
+
+
+# ============================================================
 # RECRUITER - OWN JOBS
 # ============================================================
 
@@ -1408,7 +1444,7 @@ def api_user_jobs(
     Return only jobs belonging to the authenticated recruiter.
     """
 
-    if user.role != "RECRUITER":
+    if user.role not in ["RECRUITER", "ADMIN"]:
         raise HTTPException(
             status_code=403,
             detail="Recruiter access required",
@@ -1443,7 +1479,7 @@ def api_user_candidates(
     Ownership is checked by user ID.
     """
 
-    if user.role != "RECRUITER":
+    if user.role not in ["RECRUITER", "ADMIN"]:
         raise HTTPException(
             status_code=403,
             detail="Recruiter access required",
@@ -1518,3 +1554,27 @@ def api_admin_candidates(
             status_code=404,
             detail="Job not found",
         )
+
+@router.post("/user/jobs/{job_id}/candidates/{candidate_id}/contact")
+def api_mark_contacted(
+    job_id: UUID,
+    candidate_id: UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    mark_candidate_contacted(db, job_id, candidate_id)
+    return {"status": "success"}
+
+@router.get("/user/candidates")
+def api_get_all_candidates(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return get_all_candidates(db, user.id)
+
+@router.get("/user/outreach")
+def api_get_outreach(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return get_outreach_campaigns(db, user.id)

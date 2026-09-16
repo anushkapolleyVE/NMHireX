@@ -1633,6 +1633,7 @@ def get_job_candidates(db: Session, job_id: UUID, limit: int = 10) -> list[dict]
             "candidate_id": str(candidate.id),  
             "name": candidate.name,
             "email": candidate.email,
+            "phone": candidate.phone,
 
             # Candidate information for frontend
             "experience_years": (
@@ -1687,3 +1688,171 @@ def get_admin_job_candidates(db: Session, job_id: UUID) -> list[dict]:
     if not db.get(Job, job_id):
         raise ValueError("Job not found")
     return get_job_candidates(db, job_id)
+
+def get_user_dashboard(db: Session, user_id: UUID) -> dict:
+    """Input: user UUID. Output: aggregate dashboard stats and pipeline."""
+    user = db.get(User, user_id)
+    if not user:
+        raise ValueError("User not found")
+        
+    jobs = db.scalars(select(Job).where(Job.created_by == user_id).order_by(Job.created_at.desc())).all()
+    active_jobs = len(jobs)
+    
+    total_screened = 0
+    strong_matches = 0
+    whatsapp_outreach = 0
+    
+    pipeline = []
+    
+    for j in jobs:
+        candidates = get_job_candidates(db, j.id)
+        screened_count = len(candidates)
+        total_screened += screened_count
+        
+        strong_count = sum(1 for c in candidates if c.get("score", 0) >= 80)
+        strong_matches += strong_count
+        
+        exp_str = "N/A"
+        if j.requirements:
+            min_exp = j.requirements.minimum_experience
+            max_exp = j.requirements.maximum_experience
+            if min_exp and max_exp: 
+                exp_str = f"{int(min_exp)}-{int(max_exp)} yrs"
+            elif min_exp: 
+                exp_str = f"{int(min_exp)}+ yrs"
+                
+        pipeline.append({
+            "job_id": str(j.id),
+            "title": j.title,
+            "location": j.location or "Remote",
+            "experience": exp_str,
+            "sources": "Database",
+            "screened": screened_count,
+            "strong": strong_count,
+            "outreach_count": 0,
+            "outreach_total": screened_count,
+            "status": j.status
+        })
+        
+    return {
+        "user_name": user.name,
+        "metrics": {
+            "active_jobs": active_jobs,
+            "candidates_screened": total_screened,
+            "strong_matches": strong_matches,
+            "whatsapp_outreach": whatsapp_outreach
+        },
+        "pipeline": pipeline[:5]
+    }
+
+def mark_candidate_contacted(db: Session, job_id: UUID, candidate_id: UUID):
+    db.execute(
+        text("UPDATE job_candidates SET recruitment_status = 'CONTACTED' WHERE job_id = :job_id AND candidate_id = :candidate_id"),
+        {"job_id": job_id, "candidate_id": candidate_id}
+    )
+    db.commit()
+
+def get_all_candidates(db: Session, user_id: UUID) -> list[dict]:
+    # Fetch all candidates in the database (ensuring each is listed exactly once)
+    candidates = db.execute(select(Candidate).order_by(Candidate.created_at.desc())).scalars().all()
+    
+    results = []
+    for candidate in candidates:
+        # Get their most recent job application (if any) to populate job-specific fields
+        jc_row = db.execute(
+            select(JobCandidate, Job, ScreeningResult)
+            .join(Job, Job.id == JobCandidate.job_id)
+            .outerjoin(ScreeningResult, ScreeningResult.job_candidate_id == JobCandidate.id)
+            .where(JobCandidate.candidate_id == candidate.id)
+            .order_by(JobCandidate.created_at.desc())
+            .limit(1)
+        ).first()
+        
+        score = 0
+        scoreLabel = "-"
+        job_title = "-"
+        stage = "-"
+        job_id = None
+        
+        if jc_row:
+            jc, job, screening = jc_row
+            job_id = str(job.id)
+            job_title = job.title
+            stage = jc.recruitment_status
+            if screening and screening.total_score:
+                score = float(screening.total_score)
+                scoreLabel = screening.classification
+                
+        results.append({
+            "id": str(candidate.id),
+            "job_id": job_id,
+            "name": candidate.name or "Unnamed",
+            "location": candidate.location or "-",
+            "exp": f"{candidate.total_experience_years} yrs" if candidate.total_experience_years else "-",
+            "score": score,
+            "scoreLabel": scoreLabel,
+            "job": job_title,
+            "skills": ", ".join(candidate.normalized_profile.get("skills", [])[:5]) if candidate.normalized_profile and candidate.normalized_profile.get("skills") else "-",
+            "stage": stage
+        })
+    return results
+
+def get_outreach_campaigns(db: Session, user_id: UUID) -> dict:
+    # Get jobs
+    jobs = db.execute(select(Job).where(Job.created_by == user_id)).scalars().all()
+    
+    campaigns = []
+    total_contacted = 0
+    total_pending = 0
+    total_interested = 0
+    
+    for job in jobs:
+        rows = db.execute(
+            select(JobCandidate, ScreeningResult)
+            .join(ScreeningResult, ScreeningResult.job_candidate_id == JobCandidate.id)
+            .where(JobCandidate.job_id == job.id)
+        ).all()
+        
+        eligible = 0
+        contacted = 0
+        interested = 0
+        
+        for jc, screening in rows:
+            if screening.total_score and screening.total_score >= 70:
+                eligible += 1
+                if jc.recruitment_status == 'CONTACTED':
+                    contacted += 1
+                elif jc.recruitment_status == 'INTERESTED':
+                    interested += 1
+                    contacted += 1 # interested implies contacted
+        
+        status = 'Active' if contacted > 0 else 'Draft'
+        if eligible > 0 and contacted == eligible:
+            status = 'Completed'
+            
+        campaigns.append({
+            "id": str(job.id),
+            "name": job.title,
+            "job": job.title,
+            "created": job.created_at.strftime("%b %d, %Y") if job.created_at else "",
+            "rule": f"{eligible} eligible",
+            "eligible": eligible,
+            "contacted": contacted,
+            "interested": interested,
+            "status": status,
+            "searchStr": f"{job.title} {status}".lower()
+        })
+        
+        total_contacted += contacted
+        total_pending += (eligible - contacted)
+        total_interested += interested
+        
+    return {
+        "metrics": {
+            "contacted": total_contacted,
+            "pending": total_pending,
+            "interested": total_interested,
+            "tests_assigned": 0
+        },
+        "campaigns": campaigns
+    }

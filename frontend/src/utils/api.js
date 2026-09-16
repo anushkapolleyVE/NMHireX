@@ -204,3 +204,53 @@ export const syncCandidates = async (source, pathOrUrl) => {
 
   return response.json();
 };
+
+// --------------------------------------------------
+// GET USER DASHBOARD
+// --------------------------------------------------
+
+export const getUserDashboard = async () => {
+  const response = await fetch(
+    `${API_BASE_URL}/user/dashboard`,
+    {
+      method: "GET",
+      headers: getHeaders(),
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      await getErrorMessage(
+        response,
+        "Failed to fetch dashboard data."
+      )
+    );
+  }
+
+  return response.json();
+};
+
+export const markCandidateContacted = async (jobId, candidateId) => {
+  const res = await fetch(`${API_BASE_URL}/user/jobs/${jobId}/candidates/${candidateId}/contact`, {
+    method: 'POST',
+    headers: getHeaders()
+  });
+  if (!res.ok) throw new Error('Failed to mark contacted');
+  return await res.json();
+};
+
+export const getAllCandidates = async () => {
+  const res = await fetch(`${API_BASE_URL}/user/candidates`, {
+    headers: getHeaders()
+  });
+  if (!res.ok) throw new Error('Failed to fetch candidates');
+  return await res.json();
+};
+
+export const getOutreachData = async () => {
+  const res = await fetch(`${API_BASE_URL}/user/outreach`, {
+    headers: getHeaders()
+  });
+  if (!res.ok) throw new Error('Failed to fetch outreach');
+  return await res.json();
+};

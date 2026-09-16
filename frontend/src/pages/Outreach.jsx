@@ -1,48 +1,31 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { getOutreachData } from '../utils/api';
 import Header from '../components/Header';
 
 export default function Outreach() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
 
-  const campaigns = [
-    {
-      id: 1,
-      name: 'Senior React Developer',
-      job: 'React Developer',
-      created: 'Created today',
-      rule: 'Top 200 rule',
-      eligible: 200,
-      contacted: 142,
-      interested: 34,
-      status: 'Active',
-      searchStr: 'senior react developer active'
-    },
-    {
-      id: 2,
-      name: 'Python FastAPI Engineer',
-      job: 'FastAPI Engineer',
-      created: 'Completed yesterday',
-      rule: '',
-      eligible: 86,
-      contacted: 86,
-      interested: 17,
-      status: 'Completed',
-      searchStr: 'python fastapi engineer completed'
-    },
-    {
-      id: 3,
-      name: 'Product Designer',
-      job: 'Product Designer',
-      created: 'Not started',
-      rule: '61 eligible',
-      eligible: 61,
-      contacted: 0,
-      interested: 0,
-      status: 'Draft',
-      searchStr: 'product designer draft'
-    }
-  ];
+    const [campaigns, setCampaigns] = useState([]);
+  const [metrics, setMetrics] = useState({ contacted: 0, pending: 0, interested: 0, tests_assigned: 0 });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchOutreach = async () => {
+      try {
+        const data = await getOutreachData();
+        if (data) {
+          setMetrics(data.metrics);
+          setCampaigns(data.campaigns);
+        }
+      } catch (err) {
+        console.error('Failed to fetch outreach data', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchOutreach();
+  }, []);
 
   const filtered = campaigns.filter(c => {
     const qMatch = c.searchStr.includes(search.toLowerCase());
@@ -79,24 +62,24 @@ export default function Outreach() {
           <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6 animate-slide-up opacity-0-init animate-delay-200">
             <div className="glass-dark glass-dark-card rounded-2xl p-6 relative overflow-hidden group">
               <p className="text-xs font-bold uppercase tracking-wider text-slate-400 relative z-10">Candidates contacted</p>
-              <p className="mt-2 font-display text-4xl font-bold text-white relative z-10">142</p>
+              <p className="mt-2 font-display text-4xl font-bold text-white relative z-10">{metrics.contacted}</p>
               <p className="mt-2 text-[11px] font-semibold text-slate-400 relative z-10">This month</p>
             </div>
             <div className="glass-dark glass-dark-card rounded-2xl p-6 relative overflow-hidden group">
               <p className="text-xs font-bold uppercase tracking-wider text-slate-400 relative z-10">Pending outreach</p>
-              <p className="mt-2 font-display text-4xl font-bold text-white relative z-10">58</p>
+              <p className="mt-2 font-display text-4xl font-bold text-white relative z-10">{metrics.pending}</p>
               <p className="mt-2 text-[11px] font-semibold text-slate-400 relative z-10">From current eligible pool</p>
             </div>
             <div className="glass-dark glass-dark-card rounded-2xl p-6 relative overflow-hidden group">
               <p className="text-xs font-bold uppercase tracking-wider text-slate-400 relative z-10">Interested</p>
-              <p className="mt-2 font-display text-4xl font-bold text-white relative z-10">34</p>
+              <p className="mt-2 font-display text-4xl font-bold text-white relative z-10">{metrics.interested}</p>
               <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-brand/20 px-2 py-1 text-[11px] font-bold text-brand ring-1 ring-brand/30 shadow-[0_0_8px_rgba(59,130,246,0.15)] relative z-10">
                 24% response-to-interest
               </p>
             </div>
             <div className="glass-dark glass-dark-card rounded-2xl p-6 relative overflow-hidden group">
               <p className="text-xs font-bold uppercase tracking-wider text-slate-400 relative z-10">Tests assigned</p>
-              <p className="mt-2 font-display text-4xl font-bold text-white relative z-10">19</p>
+              <p className="mt-2 font-display text-4xl font-bold text-white relative z-10">{metrics.tests_assigned}</p>
               <p className="mt-2 text-[11px] font-semibold text-slate-400 relative z-10">After candidate interest</p>
             </div>
           </section>

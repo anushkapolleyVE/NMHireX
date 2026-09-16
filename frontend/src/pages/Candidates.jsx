@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { getAllCandidates } from '../utils/api';
 import Header from '../components/Header';
 import SyncCandidatesModal from '../components/SyncCandidatesModal';
 
@@ -9,56 +10,26 @@ export default function Candidates() {
   const [score, setScore] = useState('');
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
 
-  const candidates = [
-    {
-      id: 1,
-      name: 'Rahul Sharma',
-      location: 'Kolkata',
-      exp: '6.2 yrs',
-      score: 94.2,
-      scoreLabel: 'Excellent',
-      job: 'React Developer',
-      skills: 'React, TS, Node, Next.js',
-      stage: 'Eligible',
-      searchStr: 'rahul sharma react typescript javascript node senior react developer'
-    },
-    {
-      id: 2,
-      name: 'Priya Das',
-      location: 'Kolkata',
-      exp: '5.1 yrs',
-      score: 86.7,
-      scoreLabel: 'Strong',
-      job: 'React Developer',
-      skills: 'React, JS, TS, AWS',
-      stage: 'Interested',
-      searchStr: 'priya das react javascript typescript aws product senior react developer'
-    },
-    {
-      id: 3,
-      name: 'Amit Kumar',
-      location: 'Remote',
-      exp: '4.4 yrs',
-      score: 76.4,
-      scoreLabel: 'Good',
-      job: 'FastAPI Engineer',
-      skills: 'Python, FastAPI, PostgreSQL',
-      stage: 'Test Assigned',
-      searchStr: 'amit kumar python fastapi postgresql product'
-    },
-    {
-      id: 4,
-      name: 'Neha Roy',
-      location: 'Bengaluru',
-      exp: '7.0 yrs',
-      score: 91.3,
-      scoreLabel: 'Excellent',
-      job: 'Product Designer',
-      skills: 'Figma, UX, Research',
-      stage: 'Interview',
-      searchStr: 'neha roy product designer figma ux research design systems'
-    }
-  ];
+    const [candidates, setCandidates] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchCandidates = async () => {
+      try {
+        const data = await getAllCandidates();
+        const enrichedData = data.map(c => ({
+          ...c,
+          searchStr: `${c.name} ${c.job} ${c.skills} ${c.stage}`.toLowerCase()
+        }));
+        setCandidates(enrichedData);
+      } catch (err) {
+        console.error('Failed to fetch candidates', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchCandidates();
+  }, []);
 
   const filtered = candidates.filter(c => {
     const qMatch = c.searchStr.includes(search.toLowerCase());
@@ -97,22 +68,22 @@ export default function Candidates() {
           <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6 animate-slide-up opacity-0-init animate-delay-200">
             <div className="glass-dark glass-dark-card rounded-2xl p-6 relative overflow-hidden group">
               <p className="text-xs font-bold uppercase tracking-wider text-slate-400 relative z-10">Total candidates</p>
-              <p className="mt-2 font-display text-4xl font-bold text-white relative z-10">1,248</p>
+              <p className="mt-2 font-display text-4xl font-bold text-white relative z-10">{candidates.length}</p>
               <p className="mt-2 text-[11px] font-semibold text-slate-400 relative z-10">Across connected sources</p>
             </div>
             <div className="glass-dark glass-dark-card rounded-2xl p-6 relative overflow-hidden group">
               <p className="text-xs font-bold uppercase tracking-wider text-slate-400 relative z-10">Excellent / Strong</p>
-              <p className="mt-2 font-display text-4xl font-bold text-white relative z-10">186</p>
+              <p className="mt-2 font-display text-4xl font-bold text-white relative z-10">{candidates.filter(c => c.score >= 80).length}</p>
               <p className="mt-2 text-[11px] font-semibold text-slate-400 relative z-10">Score ≥ 80</p>
             </div>
             <div className="glass-dark glass-dark-card rounded-2xl p-6 relative overflow-hidden group">
               <p className="text-xs font-bold uppercase tracking-wider text-slate-400 relative z-10">Interested</p>
-              <p className="mt-2 font-display text-4xl font-bold text-white relative z-10">34</p>
+              <p className="mt-2 font-display text-4xl font-bold text-white relative z-10">{candidates.filter(c => c.stage === 'INTERESTED').length}</p>
               <p className="mt-2 text-[11px] font-semibold text-slate-400 relative z-10">Ready for next step</p>
             </div>
             <div className="glass-dark glass-dark-card rounded-2xl p-6 relative overflow-hidden group">
               <p className="text-xs font-bold uppercase tracking-wider text-slate-400 relative z-10">Tests / Interviews</p>
-              <p className="mt-2 font-display text-4xl font-bold text-white relative z-10">27</p>
+              <p className="mt-2 font-display text-4xl font-bold text-white relative z-10">{candidates.filter(c => c.stage === 'TEST_ASSIGNED' || c.stage === 'INTERVIEW').length}</p>
               <p className="mt-2 text-[11px] font-semibold text-slate-400 relative z-10">Currently in process</p>
             </div>
           </section>
