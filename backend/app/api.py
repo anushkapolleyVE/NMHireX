@@ -1102,7 +1102,7 @@ async def api_create_job(
             detail="Only recruiters can create job descriptions",
         )
 
-    if user.status != "APPROVED":
+    if user.role == "RECRUITER" and user.status != "APPROVED":
         raise HTTPException(
             status_code=403,
             detail="Recruiter account is not approved",
@@ -1418,7 +1418,7 @@ def api_user_dashboard(
             detail="Recruiter access required",
         )
 
-    if user.status != "APPROVED":
+    if user.role == "RECRUITER" and user.status != "APPROVED":
         raise HTTPException(
             status_code=403,
             detail="Recruiter account is not approved",
@@ -1450,7 +1450,7 @@ def api_user_jobs(
             detail="Recruiter access required",
         )
 
-    if user.status != "APPROVED":
+    if user.role == "RECRUITER" and user.status != "APPROVED":
         raise HTTPException(
             status_code=403,
             detail="Recruiter account is not approved",
@@ -1485,7 +1485,7 @@ def api_user_candidates(
             detail="Recruiter access required",
         )
 
-    if user.status != "APPROVED":
+    if user.role == "RECRUITER" and user.status != "APPROVED":
         raise HTTPException(
             status_code=403,
             detail="Recruiter account is not approved",

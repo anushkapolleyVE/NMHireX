@@ -1792,7 +1792,7 @@ def get_all_candidates(db: Session, user_id: UUID) -> list[dict]:
             "score": score,
             "scoreLabel": scoreLabel,
             "job": job_title,
-            "skills": ", ".join(candidate.normalized_profile.get("skills", [])[:5]) if candidate.normalized_profile and candidate.normalized_profile.get("skills") else "-",
+            "skills": ", ".join([s.get("name", str(s)) if isinstance(s, dict) else str(s) for s in candidate.normalized_profile.get("skills", [])][:5]) if candidate.normalized_profile and candidate.normalized_profile.get("skills") else "-",
             "stage": stage
         })
     return results
