@@ -1403,6 +1403,11 @@
 Each function is intentionally small and directly composable; LangGraph is not
 required for this deterministic pipeline.
 """
+import os
+import shutil
+import tempfile
+import zipfile
+
 import hashlib, json, re, time, logging, os, base64
 from pathlib import Path
 from uuid import UUID
@@ -1586,7 +1591,7 @@ def read_file(path: str) -> str:
     p = Path(path)
 
     if p.suffix.lower() == ".pdf":
-        return _read_pdf_with_ocr(str(p))
+        return _read_pdf_with_ocr(str(p))  
 
     if p.suffix.lower() == ".docx":
         return "\n".join(
