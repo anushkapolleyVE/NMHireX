@@ -20,13 +20,18 @@ export default function Header({ showNav = true }) {
 
   const firstLetter = userName ? userName.charAt(0).toUpperCase() : 'U';
 
-  const navItems = [
-    { name: 'Dashboard', path: '/dashboard' },
-    { name: 'Match Agent', path: '/match-agent' },
-    { name: 'Outreach', path: '/outreach' },
-    { name: 'Candidates', path: '/candidates' },
-    ...(isAdmin ? [{ name: 'Recruiters', path: '/admin' }] : [])
-  ];
+  const navItems = isAdmin 
+    ? [
+        { name: 'Dashboard', path: '/dashboard' },
+        { name: 'Candidates', path: '/candidates' },
+        { name: 'Recruiters', path: '/admin' }
+      ]
+    : [
+        { name: 'Dashboard', path: '/dashboard' },
+        { name: 'Match Agent', path: '/match-agent' },
+        { name: 'Outreach', path: '/outreach' },
+        { name: 'Candidates', path: '/candidates' }
+      ];
 
   return (
     <header className="relative z-20 animate-slide-up opacity-0-init">
