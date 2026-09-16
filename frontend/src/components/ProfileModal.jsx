@@ -36,9 +36,6 @@ const ProfileModal = ({ isOpen, onClose, candidate }) => {
                 <p className="mt-1">{candidate.exp || candidate.experience || '0'} years experience</p>
               </div>
             </div>
-            <button className="rounded-full border border-gray-300 bg-white px-4 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm whitespace-nowrap">
-              View original file
-            </button>
           </div>
           
           {/* Skills */}
