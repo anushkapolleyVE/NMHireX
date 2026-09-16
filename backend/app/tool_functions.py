@@ -1752,9 +1752,54 @@ def mark_candidate_contacted(db: Session, job_id: UUID, candidate_id: UUID):
     )
     db.commit()
 
+
+def get_outreach_candidates(db: Session, user_id: UUID) -> list[dict]:
+    # Get all candidates who have been contacted, interested, or not interested
+    # They should have recruitment_status IN ('CONTACTED', 'INTERESTED', 'NOT_INTERESTED', 'INTERVIEW_LINK_SENT')
+    rows = db.execute(
+        select(JobCandidate, Job, Candidate)
+        .join(Job, Job.id == JobCandidate.job_id)
+        .join(Candidate, Candidate.id == JobCandidate.candidate_id)
+        .where(JobCandidate.recruitment_status.in_(['CONTACTED', 'INTERESTED', 'NOT_INTERESTED', 'INTERVIEW_LINK_SENT']))
+        .order_by(JobCandidate.updated_at.desc())
+    ).all()
+    
+    results = []
+    for jc, job, candidate in rows:
+        results.append({
+            "id": str(candidate.id),
+            "job_id": str(job.id),
+            "job_candidate_id": str(jc.id),
+            "name": candidate.name or "Unnamed Candidate",
+            "job": job.title or "Unknown Role",
+            "status": jc.recruitment_status
+        })
+    return results
+
+def update_candidate_status(db: Session, job_id: UUID, candidate_id: UUID, status: str):
+    db.execute(
+        text("UPDATE job_candidates SET recruitment_status = :status, updated_at = now() WHERE job_id = :job_id AND candidate_id = :candidate_id"),
+        {"job_id": job_id, "candidate_id": candidate_id, "status": status}
+    )
+    db.commit()
+
 def get_all_candidates(db: Session, user_id: UUID) -> list[dict]:
     # Fetch all candidates in the database (ensuring each is listed exactly once)
-    candidates = db.execute(select(Candidate).order_by(Candidate.created_at.desc())).scalars().all()
+    # Only return candidates who are marked as INTERESTED or INTERVIEW_LINK_SENT
+    rows = db.execute(
+        select(Candidate, JobCandidate)
+        .join(JobCandidate, JobCandidate.candidate_id == Candidate.id)
+        .where(JobCandidate.recruitment_status.in_(['INTERESTED', 'INTERVIEW_LINK_SENT']))
+        .order_by(Candidate.created_at.desc())
+    ).all()
+    
+    # Extract unique candidates
+    seen = set()
+    candidates = []
+    for cand, jc in rows:
+        if cand.id not in seen:
+            candidates.append(cand)
+            seen.add(cand.id)
     
     results = []
     for candidate in candidates:
@@ -1787,6 +1832,8 @@ def get_all_candidates(db: Session, user_id: UUID) -> list[dict]:
             "id": str(candidate.id),
             "job_id": job_id,
             "name": candidate.name or "Unnamed",
+            "email": candidate.email,
+            "phone": candidate.phone,
             "location": candidate.location or "-",
             "exp": f"{candidate.total_experience_years} yrs" if candidate.total_experience_years else "-",
             "score": score,

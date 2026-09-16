@@ -6,6 +6,7 @@ import {
   createJob,
   createJobFromText,
   screenJob,
+  updateCandidateStatus,
 } from "../utils/api";
 
 const CRITERIA_WEIGHTS = {
@@ -202,7 +203,6 @@ function WhatsappInviteModal({ isOpen, onClose, candidate, onSend }) {
 
   const handleSend = async () => {
     if (candidate.phone) {
-      window.open(`https://wa.me/${candidate.phone}`, "_blank", "noopener,noreferrer");
       if (onSend) {
         await onSend(candidate);
       }
@@ -306,6 +306,7 @@ export default function MatchAgent() {
 
   const [whatsappModalOpen, setWhatsappModalOpen] = useState(false);
   const [selectedWhatsappCandidate, setSelectedWhatsappCandidate] = useState(null);
+  const [whatsappContacted, setWhatsappContacted] = useState({});
 
   const [contacted, setContacted] =
     useState({});
@@ -577,7 +578,7 @@ export default function MatchAgent() {
   // CONTACT
   // ==========================================================
 
-  const handleContact = (candidateId) => {
+  const handleContact = async (candidateId) => {
 
     setContacted(
       (prev) => ({
@@ -585,6 +586,13 @@ export default function MatchAgent() {
         [candidateId]: true,
       })
     );
+    try {
+      if (jobId) {
+        await updateCandidateStatus(jobId, candidateId, 'CONTACTED');
+      }
+    } catch (err) {
+      console.error('Failed to mark contacted', err);
+    }
   };
 
 
@@ -840,11 +848,16 @@ export default function MatchAgent() {
                           <button onClick={() => handleContact(candidateKey)} disabled={contacted[candidateKey]} className={`rounded-xl px-4 py-2 text-xs font-bold transition-all ${contacted[candidateKey] ? "bg-accent/20 text-accent border border-accent/30" : "bg-brand text-white hover:bg-brand-light shadow-sm"}`}>
                             {contacted[candidateKey] ? "✓ Added to outreach" : "Add to outreach"}
                           </button>
-                          <button type="button" onClick={() => {
-                            setSelectedWhatsappCandidate(candidate);
-                            setWhatsappModalOpen(true);
-                          }} className="rounded-xl bg-green-600 px-4 py-2 text-xs font-bold text-white transition-all hover:bg-green-500">
-                            WhatsApp
+                          <button 
+                            type="button" 
+                            onClick={() => {
+                              setSelectedWhatsappCandidate(candidate);
+                              setWhatsappModalOpen(true);
+                            }} 
+                            disabled={whatsappContacted[candidateKey]}
+                            className={`rounded-xl px-4 py-2 text-xs font-bold transition-all ${whatsappContacted[candidateKey] ? "bg-green-500/20 text-green-500 border border-green-500/30" : "bg-green-600 text-white hover:bg-green-500 shadow-sm"}`}
+                          >
+                            {whatsappContacted[candidateKey] ? "✓ Sent invite" : "WhatsApp"}
                           </button>
                         </div>
 
@@ -1475,7 +1488,9 @@ export default function MatchAgent() {
         candidate={selectedWhatsappCandidate}
         onSend={async (c) => {
           try {
-            await markCandidateContacted(selectedJobId, c.candidate_id || c.id);
+            const cId = c.candidate_id || c.id || c.candidateKey;
+            setWhatsappContacted((prev) => ({ ...prev, [cId]: true }));
+            handleContact(cId);
           } catch (err) {
             console.error('Failed to mark contacted', err);
           }

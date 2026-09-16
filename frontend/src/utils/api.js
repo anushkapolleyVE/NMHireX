@@ -251,6 +251,19 @@ export const getOutreachData = async () => {
   const res = await fetch(`${API_BASE_URL}/user/outreach`, {
     headers: getHeaders()
   });
-  if (!res.ok) throw new Error('Failed to fetch outreach');
+  if (!res.ok) throw new Error('Failed to fetch outreach data');
+  return await res.json();
+};
+
+export const updateCandidateStatus = async (jobId, candidateId, status) => {
+  const res = await fetch(`${API_BASE_URL}/user/jobs/${jobId}/candidates/${candidateId}/status`, {
+    method: 'POST',
+    headers: {
+      ...getHeaders(),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ status })
+  });
+  if (!res.ok) throw new Error('Failed to update candidate status');
   return await res.json();
 };

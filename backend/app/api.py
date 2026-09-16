@@ -772,7 +772,7 @@ from .tool_functions import (
     get_user_dashboard,
     mark_candidate_contacted,
     get_all_candidates,
-    get_outreach_campaigns,
+    get_outreach_candidates, update_candidate_status,
 )
 
 from .config import settings
@@ -1577,4 +1577,21 @@ def api_get_outreach(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    return get_outreach_campaigns(db, user.id)
+    return get_outreach_candidates(db, user.id)
+
+class StatusUpdateRequest(BaseModel):
+    status: str
+
+@router.post("/user/jobs/{job_id}/candidates/{candidate_id}/status")
+def api_update_candidate_status(
+    job_id: UUID,
+    candidate_id: UUID,
+    req: StatusUpdateRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if user.role == "RECRUITER" and user.status != "APPROVED":
+        raise HTTPException(status_code=403, detail="Recruiter account is not approved")
+        
+    update_candidate_status(db, job_id, candidate_id, req.status)
+    return {"message": "Status updated successfully"}
