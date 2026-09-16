@@ -24,15 +24,13 @@ from .models import (User, Job, JobRequirement, Candidate, Resume, CandidateSkil
     CandidateExperience, CandidateEducation, CandidateCertification, CandidateProject,
     JobCandidate, ScreeningResult, ScreeningRun, AIExtractionLog)
 
-openai_client = OpenAI(api_key=settings.GROQ_API_KEY, base_url=settings.GROQ_BASE_URL)
-
-# Separate OpenAI client used ONLY for OCR/vision fallback.
-# Existing Groq client and JSON extraction flow are unchanged.
-OCR_MODEL = "gpt-5.6-luna"
-
 OPENAI_API_KEY = settings.OPENAI_API_KEY
 
-luna_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+luna_client = openai_client
+
+OCR_MODEL = "gpt-4o"
+
 
 # ------------------------------------------------------------
 # FILE HELPERS
