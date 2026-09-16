@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getAllCandidates } from '../utils/api';
 import Header from '../components/Header';
+import SyncCandidatesModal from '../components/SyncCandidatesModal';
 
 const ProfileModal = ({ isOpen, onClose, candidate }) => {
   if (!isOpen || !candidate) return null;
@@ -80,6 +81,7 @@ export default function Candidates() {
   
   const [selectedCandidate, setSelectedCandidate] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
 
   useEffect(() => {
     const fetchCandidates = async () => {
@@ -134,15 +136,33 @@ export default function Candidates() {
         candidate={selectedCandidate} 
       />
 
+      <SyncCandidatesModal 
+        isOpen={isSyncModalOpen} 
+        onClose={() => setIsSyncModalOpen(false)} 
+        onSyncSuccess={() => {
+          setIsSyncModalOpen(false);
+          window.location.reload();
+        }}
+      />
+
       <main className="relative z-10">
         <div className="mx-auto max-w-5xl px-5 py-8 sm:px-8">
-          <div className="mb-10 flex flex-col gap-2 animate-slide-up opacity-0-init animate-delay-100">
-            <div className="mb-2 inline-flex items-center gap-2.5 rounded-full bg-slate-800/80 px-3 py-1.5 ring-1 ring-slate-700 w-max">
-              <span className="size-2 rounded-full bg-accent shadow-[0_0_10px_rgba(20,184,166,0.8)]"></span>
-              <p className="text-xs font-bold uppercase tracking-[0.15em] text-slate-300">Ready for Interview</p>
+          <div className="mb-10 flex flex-col sm:flex-row justify-between items-start gap-4 animate-slide-up opacity-0-init animate-delay-100">
+            <div>
+              <div className="mb-2 inline-flex items-center gap-2.5 rounded-full bg-slate-800/80 px-3 py-1.5 ring-1 ring-slate-700 w-max">
+                <span className="size-2 rounded-full bg-accent shadow-[0_0_10px_rgba(20,184,166,0.8)]"></span>
+                <p className="text-xs font-bold uppercase tracking-[0.15em] text-slate-300">Ready for Interview</p>
+              </div>
+              <h1 className="font-display text-4xl font-bold tracking-tight sm:text-5xl text-white">Interested Candidates</h1>
+              <p className="text-base text-slate-400">Review candidates who have accepted your outreach invitation.</p>
             </div>
-            <h1 className="font-display text-4xl font-bold tracking-tight sm:text-5xl text-white">Interested Candidates</h1>
-            <p className="text-base text-slate-400">Review candidates who have accepted your outreach invitation.</p>
+            
+            <button 
+              onClick={() => setIsSyncModalOpen(true)} 
+              className="rounded-xl bg-slate-800/80 px-5 py-3.5 text-sm font-bold text-white ring-1 ring-slate-700 hover:bg-slate-700 shadow-sm transition-all hover:-translate-y-0.5 whitespace-nowrap flex-shrink-0"
+            >
+              + Import candidates
+            </button>
           </div>
 
           <div className="mb-8 flex flex-wrap items-center gap-4 animate-slide-up opacity-0-init animate-delay-200">

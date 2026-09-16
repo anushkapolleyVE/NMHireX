@@ -317,7 +317,9 @@ export default function MatchAgent() {
     useState(false);
 
   const [jdModalOpen, setJdModalOpen] = useState(false);
-  const [candidatesModalOpen, setCandidatesModalOpen] = useState(false);
+  const [candidatesModalOpen, setCandidatesModalOpen] = useState(
+    !!(location.state?.autoSearch && location.state?.isScreened)
+  );
 
   // ==========================================================
   // ROUTE STATE (AUTO-LOAD FROM DASHBOARD)
@@ -815,9 +817,20 @@ export default function MatchAgent() {
             </button>
             <h2 className="font-display text-3xl font-bold mb-8 text-white">Screened Candidates</h2>
             
-            <div className="space-y-4">
-              {candidates.map((candidate, index) => {
-                    const candidateKey = candidate.candidate_id || candidate.id || index;
+            {isSearching ? (
+              <div className="flex flex-col items-center justify-center py-20 text-center animate-fade-in">
+                <div className="relative size-12 mb-6">
+                  <div className="absolute inset-0 rounded-full border-4 border-slate-800"></div>
+                  <div className="absolute inset-0 rounded-full border-4 border-brand border-t-transparent animate-spin"></div>
+                </div>
+                <h3 className="text-xl font-bold text-white mb-2">Loading candidates...</h3>
+              </div>
+            ) : candidates.length === 0 ? (
+              <div className="text-center py-20 text-slate-400">No candidates found for this job.</div>
+            ) : (
+              <div className="space-y-4">
+                {candidates.map((candidate, index) => {
+                      const candidateKey = candidate.candidate_id || candidate.id || index;
                     const score = Number(candidate.score || 0);
                     const breakdown = candidate?.score_breakdown && typeof candidate.score_breakdown === "object"
                       ? candidate.score_breakdown
@@ -917,6 +930,7 @@ export default function MatchAgent() {
                   })}
 
                 </div>
+              )}
               
             {/* =================================================
                   OUTREACH
@@ -967,8 +981,6 @@ export default function MatchAgent() {
                 </p>
 
               )}
-
-            
           </div>
         ) : (
         <div className="mx-auto max-w-7xl px-5 py-8 sm:px-8">
