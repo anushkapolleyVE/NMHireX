@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 import { getUserDashboard } from '../utils/api';
 
 export default function Dashboard() {
   const [filterText, setFilterText] = useState('All jobs');
+  const navigate = useNavigate();
   const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -116,7 +117,7 @@ export default function Dashboard() {
                       <th className="pb-4">Screened</th>
                       <th className="pb-4">Strong</th>
                       <th className="pb-4">Outreach</th>
-                      <th className="pb-4 pr-2 text-right">Status</th>
+                      <th className="pb-4 pr-2 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="text-sm">
@@ -157,7 +158,12 @@ export default function Dashboard() {
                           </div>
                         </td>
                         <td className="py-4 pr-2 text-right rounded-r-lg">
-                          <span className={`inline-flex rounded-full px-3 py-1.5 text-xs font-bold ring-1 ${job.status === 'SEARCHING' ? 'bg-brand/20 text-brand ring-brand/40 shadow-[0_0_10px_rgba(59,130,246,0.1)]' : 'bg-slate-800 text-slate-300 ring-slate-700'}`}>{job.status}</span>
+                          <button 
+                            onClick={() => navigate('/match-agent', { state: { jobId: job.job_id, autoSearch: true, isScreened: job.screened > 0 || job.status === 'ACTIVE' } })}
+                            className="rounded-lg bg-brand px-3 py-1.5 text-xs font-bold text-white hover:shadow-[0_0_15px_rgba(59,130,246,0.4)] transition-all"
+                          >
+                            View Screened
+                          </button>
                         </td>
                       </tr>
                     )) : (

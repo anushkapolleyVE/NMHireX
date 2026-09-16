@@ -1472,11 +1472,13 @@ def screen_job(db: Session, job_id: UUID) -> dict:
             result = db.execute(text(sql_query))
             candidate_ids = [UUID(str(row[0])) for row in result.fetchall()]
         except Exception as e:
-            print(f"SQL execution failed: {e}. Skipping scoring.")
-            candidate_ids = []
+            db.rollback()
+            print(f"SQL execution failed: {e}. Falling back to all candidates.")
+            result = db.execute(text("SELECT id FROM candidates;"))
+            candidate_ids = [UUID(str(row[0])) for row in result.fetchall()]
             
         if not candidate_ids:
-            print("No candidates found via NL to SQL. Skipping scoring.")
+            print("No candidates found. Skipping scoring.")
             run.status = "COMPLETED"
             run.current_stage = "COMPLETED"
             run.completed_at = time_now()

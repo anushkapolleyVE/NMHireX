@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import { Link } from "react-router-dom";
+import { useState, useMemo, useEffect } from "react";
+import { Link, useLocation } from "react-router-dom";
 import Header from "../components/Header";
 
 import {
@@ -7,6 +7,7 @@ import {
   createJobFromText,
   screenJob,
   updateCandidateStatus,
+  getJobCandidates,
 } from "../utils/api";
 
 const CRITERIA_WEIGHTS = {
@@ -254,6 +255,7 @@ function WhatsappInviteModal({ isOpen, onClose, candidate, onSend }) {
 }
 
 export default function MatchAgent() {
+  const location = useLocation();
 
   // ==========================================================
   // JOB STATE
@@ -317,7 +319,22 @@ export default function MatchAgent() {
   const [jdModalOpen, setJdModalOpen] = useState(false);
   const [candidatesModalOpen, setCandidatesModalOpen] = useState(false);
 
-
+  // ==========================================================
+  // ROUTE STATE (AUTO-LOAD FROM DASHBOARD)
+  // ==========================================================
+  useEffect(() => {
+    if (location.state?.jobId && location.state?.autoSearch) {
+      setJobId(location.state.jobId);
+      // Wait for state to settle, then search or fetch
+      setTimeout(() => {
+        if (location.state.isScreened) {
+          fetchExistingCandidates(location.state.jobId);
+        } else {
+          handleSearch(location.state.jobId);
+        }
+      }, 100);
+    }
+  }, [location.state]);
   // ==========================================================
   // FILE CHANGE
   // ==========================================================
@@ -473,6 +490,30 @@ export default function MatchAgent() {
   // ==========================================================
   // SCREEN CANDIDATES
   // ==========================================================
+
+  const fetchExistingCandidates = async (overrideJobId = null) => {
+    setError("");
+    const idToUse = overrideJobId || jobId;
+    if (!idToUse) return;
+
+    setIsSearching(true);
+    setSearchComplete(false);
+    setStatus("Loading candidates");
+
+    try {
+      const candidates = await getJobCandidates(idToUse);
+      setCandidates(candidates || []);
+      setSearchComplete(true);
+      setStatus("Screening"); // Reusing this status string to show results view
+      setCandidatesModalOpen(true); // Open directly to the candidate list
+    } catch (err) {
+      console.error("Failed to fetch existing candidates:", err);
+      setError(err.message || "Failed to fetch candidates.");
+      setStatus("Criteria ready");
+    } finally {
+      setIsSearching(false);
+    }
+  };
 
   const handleSearch = async (overrideJobId = null) => {
 
