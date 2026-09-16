@@ -1776,7 +1776,17 @@ def get_all_candidates(db: Session, user_id: UUID) -> list[dict]:
             stage = jc.recruitment_status
             if screening and screening.total_score:
                 score = float(screening.total_score)
-                scoreLabel = screening.classification
+                lbl = str(screening.classification).replace("_", " ").title() if screening.classification else "-"
+                if "Do Not Prioritize" in lbl:
+                    scoreLabel = "Low Match"
+                elif "Moderate" in lbl:
+                    scoreLabel = "Moderate Match"
+                elif "Strong" in lbl:
+                    scoreLabel = "Strong Match"
+                elif "Excellent" in lbl:
+                    scoreLabel = "Excellent Match"
+                else:
+                    scoreLabel = lbl
                 
         results.append({
             "id": str(candidate.id),
@@ -1787,7 +1797,7 @@ def get_all_candidates(db: Session, user_id: UUID) -> list[dict]:
             "score": score,
             "scoreLabel": scoreLabel,
             "job": job_title,
-            "skills": ", ".join([s.get("name", str(s)) if isinstance(s, dict) else str(s) for s in candidate.normalized_profile.get("skills", [])][:5]) if candidate.normalized_profile and candidate.normalized_profile.get("skills") else "-",
+            "skills": ", ".join([s.get("name") or s.get("skill") or s.get("skill_name") or str(s) if isinstance(s, dict) else str(s) for s in candidate.normalized_profile.get("skills", [])][:5]) if candidate.normalized_profile and candidate.normalized_profile.get("skills") else "-",
             "stage": stage
         })
     return results

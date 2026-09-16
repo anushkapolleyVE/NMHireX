@@ -130,13 +130,13 @@ export default function Candidates() {
               <table className="w-full min-w-[960px] text-left border-collapse">
                 <thead>
                   <tr className="border-b border-slate-700 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                    <th className="pb-4 pl-2">Candidate</th>
-                    <th className="pb-4">Match Score</th>
-                    <th className="pb-4">Target Job</th>
-                    <th className="pb-4">Experience</th>
-                    <th className="pb-4">Top Skills</th>
-                    <th className="pb-4">Stage</th>
-                    <th className="pb-4 pr-2 text-right">Actions</th>
+                    <th className="pb-4 pl-2 w-1/5">Candidate</th>
+                    <th className="pb-4 px-2 w-[15%]">Match Score</th>
+                    <th className="pb-4 px-2 w-[15%]">Target Job</th>
+                    <th className="pb-4 px-2 w-[10%]">Experience</th>
+                    <th className="pb-4 px-2 w-1/5">Top Skills</th>
+                    <th className="pb-4 px-2 w-[10%]">Stage</th>
+                    <th className="pb-4 pr-2 text-right w-32">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="text-sm">
@@ -148,25 +148,25 @@ export default function Candidates() {
                           {c.location} <span className="size-1 rounded-full bg-slate-600"></span> {c.exp}
                         </p>
                       </td>
-                      <td className="py-4">
+                      <td className="py-4 px-2">
                         <div className="flex items-center gap-2.5">
                           <span className="font-display text-xl font-bold text-white leading-none">{c.score}</span>
-                          <span className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-bold ring-1 ${c.scoreLabel === 'Excellent' ? 'bg-accent/20 text-accent ring-accent/30 shadow-[0_0_8px_rgba(20,184,166,0.2)]' :
-                              c.scoreLabel === 'Strong' ? 'bg-brand/20 text-brand ring-brand/30 shadow-[0_0_8px_rgba(59,130,246,0.2)]' :
+                          <span className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-bold ring-1 whitespace-nowrap ${c.scoreLabel === 'Excellent Match' ? 'bg-accent/20 text-accent ring-accent/30 shadow-[0_0_8px_rgba(20,184,166,0.2)]' :
+                              c.scoreLabel === 'Strong Match' ? 'bg-brand/20 text-brand ring-brand/30 shadow-[0_0_8px_rgba(59,130,246,0.2)]' :
                                 'bg-warning/20 text-warning ring-warning/30'
                             }`}>
                             {c.scoreLabel}
                           </span>
                         </div>
                         <div className="mt-2 h-1.5 w-24 rounded-full bg-slate-800 overflow-hidden ring-1 ring-slate-700">
-                          <div className={`h-full animate-fill-width ${c.scoreLabel === 'Excellent' ? 'bg-accent' :
-                              c.scoreLabel === 'Strong' ? 'bg-brand' : 'bg-warning'
+                          <div className={`h-full animate-fill-width ${c.scoreLabel === 'Excellent Match' ? 'bg-accent' :
+                              c.scoreLabel === 'Strong Match' ? 'bg-brand' : 'bg-warning'
                             }`} style={{ width: `${c.score}%` }}></div>
                         </div>
                       </td>
-                      <td className="py-4 font-semibold text-white">{c.job}</td>
-                      <td className="py-4 text-slate-400 font-medium">{c.exp}</td>
-                      <td className="py-4">
+                      <td className="py-4 px-2 font-semibold text-white">{c.job}</td>
+                      <td className="py-4 px-2 text-slate-400 font-medium">{c.exp}</td>
+                      <td className="py-4 px-2">
                         <div className="flex flex-wrap gap-1">
                           <span className="text-xs font-semibold text-slate-300">{c.skills}</span>
                         </div>
