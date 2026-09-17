@@ -222,7 +222,6 @@ def _json_completion(prompt: str, model: str) -> dict:
     """Input: prompt/model. Output: validated JSON object returned by the configured LLM."""
     response = openai_client.chat.completions.create(
         model=model,
-        temperature=0,
         response_format={"type": "json_object"},
         messages=[{"role": "system", "content": "Return only valid JSON."}, {"role": "user", "content": prompt}],
     )
@@ -397,7 +396,7 @@ def safe_float(value):
 # ------------------------------------------------------------
 # RESUME INGESTION
 # ------------------------------------------------------------
-def store_resume(db: Session, path: str) -> UUID:
+def store_resume(db: Session, path: str, drive_url: str | None = None) -> UUID:
     """
     Store one resume safely in PostgreSQL and Pinecone.
 
@@ -526,7 +525,7 @@ def store_resume(db: Session, path: str) -> UUID:
     resume = Resume(
         candidate_id=candidate.id,
         file_name=path_obj.name,
-        file_url=str(path_obj),
+        file_url=drive_url if drive_url else str(path_obj),
         file_type=path_obj.suffix.lower().lstrip("."),
         file_size=path_obj.stat().st_size,
         file_hash=digest,
@@ -827,13 +826,14 @@ def looks_like_job_description(text: str, filename: str) -> bool:
 #     # ingest resume folder 
 # -------------------------------------------
 
-def ingest_resume_folder(db: Session, custom_dir: str = None) -> dict:
+def ingest_resume_folder(db: Session, custom_dir: str | None = None, drive_url: str | None = None) -> dict:
     """
-    Scan the resume folder and ingest every supported CV.
+    Ingest all resumes from a directory. and ingest every supported CV.
 
     Input:
         db -> SQLAlchemy PostgreSQL database session
         custom_dir -> Optional path to scan instead of settings.RESUME_DIR
+        drive_url -> Optional Google Drive URL for the resume
 
     Output:
         Dictionary containing:
@@ -871,7 +871,7 @@ def ingest_resume_folder(db: Session, custom_dir: str = None) -> dict:
     files = sorted(
         [
             p
-            for p in resume_dir.iterdir()
+            for p in resume_dir.rglob("*")
             if p.is_file()
             and p.suffix.lower() in {
                 ".pdf",
@@ -939,7 +939,8 @@ def ingest_resume_folder(db: Session, custom_dir: str = None) -> dict:
 
             candidate_id = store_resume(
                 db=db,
-                path=str(file_path)
+                path=str(file_path),
+                drive_url=drive_url
             )
 
             successful += 1
@@ -1039,17 +1040,21 @@ def sync_google_drive(db: Session, url: str) -> dict:
     try:
         if "drive.google.com/drive/folders/" in url:
             gdown.download_folder(url, output=temp_dir, quiet=False, use_cookies=False)
-            return ingest_resume_folder(db, custom_dir=temp_dir)
+            return ingest_resume_folder(db, custom_dir=temp_dir, drive_url=url)
         else:
-            output_path = os.path.join(temp_dir, "downloaded")
-            gdown.download(url, output=output_path, quiet=False, fuzzy=True)
+            cwd = os.getcwd()
+            try:
+                os.chdir(temp_dir)
+                output_path = gdown.download(url, quiet=False)
+                
+                if output_path and zipfile.is_zipfile(output_path):
+                    with zipfile.ZipFile(output_path, 'r') as zip_ref:
+                        zip_ref.extractall(temp_dir)
+                    os.remove(output_path)
+            finally:
+                os.chdir(cwd)
             
-            if zipfile.is_zipfile(output_path):
-                with zipfile.ZipFile(output_path, 'r') as zip_ref:
-                    zip_ref.extractall(temp_dir)
-                os.remove(output_path)
-            
-            return ingest_resume_folder(db, custom_dir=temp_dir)
+            return ingest_resume_folder(db, custom_dir=temp_dir, drive_url=url)
     except Exception as e:
         return {
             "status": "FAILED",
@@ -1081,6 +1086,22 @@ def create_job(
     Output:
         Persisted Job with JobRequirement and AIExtractionLog.
     """
+
+    def _safe_float(val):
+        try:
+            if isinstance(val, dict):
+                val = val.get("max", val.get("min", val.get("value", None)))
+            return float(val) if val is not None else None
+        except (ValueError, TypeError):
+            return None
+
+    def _safe_int(val):
+        try:
+            if isinstance(val, dict):
+                val = val.get("max", val.get("min", val.get("value", None)))
+            return int(float(val)) if val is not None else None
+        except (ValueError, TypeError):
+            return None
 
     if not raw_text or not raw_text.strip():
         raise ValueError("JD content cannot be empty")
@@ -1117,12 +1138,12 @@ def create_job(
         job_id=job.id,
         job_title=data.get("job_title"),
 
-        minimum_experience=data.get("min_experience_years"),
-        maximum_experience=data.get("max_experience_years"),
+        minimum_experience=_safe_float(data.get("min_experience_years")),
+        maximum_experience=_safe_float(data.get("max_experience_years")),
 
-        location=data.get("location"),
-        work_mode=data.get("work_mode"),
-        notice_period_days=data.get("notice_period_days"),
+        location=data.get("location") if isinstance(data.get("location"), str) else None,
+        work_mode=data.get("work_mode") if isinstance(data.get("work_mode"), str) else None,
+        notice_period_days=_safe_int(data.get("notice_period_days")),
 
         mandatory_skills=data.get("mandatory_skills") or [],
         preferred_skills=data.get("preferred_skills") or [],
@@ -1380,7 +1401,7 @@ Requirements:
 """
     try:
         response = openai_client.chat.completions.create(
-            model=settings.EXTRACTION_MODEL,
+            model="gpt-4o",
             messages=[{"role": "user", "content": prompt}]
         )
         sql_query = response.choices[0].message.content.strip()
@@ -1388,24 +1409,13 @@ Requirements:
         return re.sub(r"```$", "", sql_query).strip()
     except Exception as e:
         print(f"NL-to-SQL failed: {e}")
-        return "SELECT id FROM candidates;"
+        raise e
 
 # ------------------------------------------------------------
 # GPT EVALUATION
 # ------------------------------------------------------------
-def ai_score_candidate(candidate: Candidate, req: JobRequirement) -> dict:
+def ai_score_candidate(payload: dict) -> dict:
     """Output: precisely 8 numerical scores and reasoning string."""
-    payload = {
-        "candidate": {"name": candidate.name, "experience": candidate.total_experience_years,
-                      "company": candidate.current_company, "role": candidate.current_role,
-                      "location": candidate.location, "notice_period_days": candidate.notice_period_days,
-                      "profile": candidate.profile_summary},
-        "requirements": {"min_experience": req.minimum_experience, "max_experience": req.maximum_experience,
-                          "mandatory_skills": req.mandatory_skills, "preferred_skills": req.preferred_skills,
-                          "education": req.education, "certifications": req.certifications, "domains": req.domains,
-                          "responsibilities": req.responsibilities, "location": req.location, "work_mode": req.work_mode,
-                          "notice_period_days": req.notice_period_days, "other_requirements": req.other_requirements}
-    }
     prompt = f"""
 You are an expert AI Recruiter evaluating a candidate against a job description.
 Assign precise numerical scores for each of the following 8 criteria, adhering strictly to the maximum points allowed for each.
@@ -1473,9 +1483,13 @@ def screen_job(db: Session, job_id: UUID) -> dict:
             candidate_ids = [UUID(str(row[0])) for row in result.fetchall()]
         except Exception as e:
             db.rollback()
-            print(f"SQL execution failed: {e}. Falling back to all candidates.")
-            result = db.execute(text("SELECT id FROM candidates;"))
-            candidate_ids = [UUID(str(row[0])) for row in result.fetchall()]
+            print(f"SQL execution failed: {e}. Searching failed.")
+            run.status = "FAILED"
+            run.current_stage = "COMPLETED"
+            run.completed_at = time_now()
+            job.status = "ACTIVE"
+            db.commit()
+            raise Exception("Searching failed")
             
         if not candidate_ids:
             print("No candidates found. Skipping scoring.")
@@ -1488,40 +1502,60 @@ def screen_job(db: Session, job_id: UUID) -> dict:
             
         candidate_ids = list(set(candidate_ids))
         run.total_candidates = len(candidate_ids); run.current_stage = "EVALUATING"; db.commit()
-        ranked = []
+        import concurrent.futures
+        scoring_tasks = []
         for cid in candidate_ids:
             candidate = db.get(Candidate, cid)
             if not candidate:
                 continue
-            try:
-                evaluation = ai_score_candidate(candidate, req)
-                score = calculate_score(evaluation)
-                jc = db.scalar(select(JobCandidate).where(JobCandidate.job_id == job.id, JobCandidate.candidate_id == cid))
-                if not jc:
-                    jc = JobCandidate(job_id=job.id, candidate_id=cid)
-                    db.add(jc); db.flush()
-                jc.eligibility_status = "ELIGIBLE" if score["total_score"] >= 60 else "INELIGIBLE"
-                jc.recruitment_status = "SCREENED"
-                jc.overall_score = score["total_score"]; jc.classification = score["classification"]
-                result_record = db.scalar(select(ScreeningResult).where(ScreeningResult.job_candidate_id == jc.id))
-                if not result_record:
-                    result_record = ScreeningResult(job_candidate_id=jc.id, classification=score["classification"])
-                    db.add(result_record)
-                for key in ["mandatory_skills_score","experience_score","domain_score","preferred_skills_score","education_score","location_score","availability_score","other_requirements_score","total_score","classification"]:
-                    setattr(result_record, key, score[key])
-                result_record.matching_details = {"evaluation": evaluation.get("reasoning")}
-                result_record.semantic_matches = []
-                result_record.missing_requirements = []
-                result_record.strengths = []
-                result_record.concerns = []
-                result_record.screening_model = settings.EVALUATION_MODEL; result_record.screening_version = "v2"
-                ranked.append((jc, score))
-                run.successful_candidates += 1
-            except Exception as e:
-                print(f"Candidate scoring failed: {e}")
-                run.failed_candidates += 1
-            run.processed_candidates += 1
-            db.commit()
+            payload = {
+                "candidate": {"name": candidate.name, "experience": candidate.total_experience_years,
+                              "company": candidate.current_company, "role": candidate.current_role,
+                              "location": candidate.location, "notice_period_days": candidate.notice_period_days,
+                              "profile": candidate.profile_summary},
+                "requirements": {"min_experience": req.minimum_experience, "max_experience": req.maximum_experience,
+                                  "mandatory_skills": req.mandatory_skills, "preferred_skills": req.preferred_skills,
+                                  "education": req.education, "certifications": req.certifications, "domains": req.domains,
+                                  "responsibilities": req.responsibilities, "location": req.location, "work_mode": req.work_mode,
+                                  "notice_period_days": req.notice_period_days, "other_requirements": req.other_requirements}
+            }
+            scoring_tasks.append((cid, payload))
+
+        ranked = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            future_to_cid = {executor.submit(ai_score_candidate, task[1]): task[0] for task in scoring_tasks}
+            
+            for future in concurrent.futures.as_completed(future_to_cid):
+                cid = future_to_cid[future]
+                try:
+                    evaluation = future.result()
+                    score = calculate_score(evaluation)
+                    jc = db.scalar(select(JobCandidate).where(JobCandidate.job_id == job.id, JobCandidate.candidate_id == cid))
+                    if not jc:
+                        jc = JobCandidate(job_id=job.id, candidate_id=cid)
+                        db.add(jc); db.flush()
+                    jc.eligibility_status = "ELIGIBLE" if score["total_score"] >= 60 else "INELIGIBLE"
+                    jc.recruitment_status = "SCREENED"
+                    jc.overall_score = score["total_score"]; jc.classification = score["classification"]
+                    result_record = db.scalar(select(ScreeningResult).where(ScreeningResult.job_candidate_id == jc.id))
+                    if not result_record:
+                        result_record = ScreeningResult(job_candidate_id=jc.id, classification=score["classification"])
+                        db.add(result_record)
+                    for key in ["mandatory_skills_score","experience_score","domain_score","preferred_skills_score","education_score","location_score","availability_score","other_requirements_score","total_score","classification"]:
+                        setattr(result_record, key, score[key])
+                    result_record.matching_details = {"evaluation": evaluation.get("reasoning")}
+                    result_record.semantic_matches = []
+                    result_record.missing_requirements = []
+                    result_record.strengths = []
+                    result_record.concerns = []
+                    result_record.screening_model = settings.EVALUATION_MODEL; result_record.screening_version = "v2"
+                    ranked.append((jc, score))
+                    run.successful_candidates += 1
+                except Exception as e:
+                    print(f"Candidate scoring failed: {e}")
+                    run.failed_candidates += 1
+                run.processed_candidates += 1
+                db.commit()
         ranked.sort(key=lambda x: x[1]["total_score"], reverse=True)
         for position, (jc, score) in enumerate(ranked, 1):
             jc.ranking_position = position
@@ -1628,12 +1662,16 @@ def get_job_candidates(db: Session, job_id: UUID, limit: int = 10) -> list[dict]
         if screening.matching_details:
             reasoning = screening.matching_details.get("evaluation")
 
+        resume = db.execute(select(Resume).where(Resume.candidate_id == candidate.id).order_by(Resume.uploaded_at.desc())).scalars().first()
+        resume_url = resume.file_url if resume else None
+
         results.append({
             "rank": jc.ranking_position,
             "candidate_id": str(candidate.id),  
             "name": candidate.name,
             "email": candidate.email,
             "phone": candidate.phone,
+            "resume_url": resume_url,
 
             # Candidate information for frontend
             "experience_years": (

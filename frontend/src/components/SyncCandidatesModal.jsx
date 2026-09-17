@@ -23,9 +23,6 @@ export default function SyncCandidatesModal({ isOpen, onClose, onSyncSuccess }) 
     try {
       const data = await syncCandidates(source, pathOrUrl);
       setResult(data);
-      if (onSyncSuccess) {
-        onSyncSuccess(data);
-      }
     } catch (err) {
       setError(err.message || 'Failed to sync candidates.');
     } finally {
@@ -34,11 +31,16 @@ export default function SyncCandidatesModal({ isOpen, onClose, onSyncSuccess }) 
   };
 
   const handleClose = () => {
+    if (result && onSyncSuccess) {
+      onSyncSuccess(result);
+    } else {
+      onClose();
+    }
+    
     setSource('local');
     setPathOrUrl('');
     setError('');
     setResult(null);
-    onClose();
   };
 
   return (

@@ -927,12 +927,15 @@ def login_recruiter(
     email: str = Form(...),
     db: Session = Depends(get_db),
 ):
+    email = email.strip().lower()
+    name = name.strip()
+    
     user = db.query(User).filter(
         User.email == email,
         User.role == "RECRUITER"
     ).first()
 
-    if not user or user.name.lower() != name.lower():
+    if not user or user.name.lower().strip() != name.lower():
         raise HTTPException(
             status_code=401,
             detail="Recruiter not found. Please register first.",
