@@ -195,6 +195,10 @@ function CompareCandidatesModal({ isOpen, onClose, candidates, baseCandidateId }
 function WhatsappInviteModal({ isOpen, onClose, candidate, onSend }) {
   if (!isOpen || !candidate) return null;
 
+  const devStage = import.meta.env.VITE_HIRE_X_DEV_STAGE || 'production';
+  const stageNumber = import.meta.env.VITE_WHATSAPP_STAGE_NUMBER || '';
+  const isStageMode = devStage !== 'production';
+
   const roleText = candidate.current_role || candidate.job || '';
   const companyText = candidate.current_company ? `@ ${candidate.current_company}` : '';
   const locationText = candidate.location ? `- ${candidate.location}` : '';
@@ -207,7 +211,8 @@ function WhatsappInviteModal({ isOpen, onClose, candidate, onSend }) {
   const handleSend = async () => {
     if (candidate.phone) {
       if (onSend) {
-        await onSend(candidate);
+        const targetPhone = isStageMode ? stageNumber : candidate.phone;
+        await onSend(candidate, targetPhone);
       }
     }
     onClose();
@@ -226,17 +231,23 @@ function WhatsappInviteModal({ isOpen, onClose, candidate, onSend }) {
           </div>
         </div>
 
-        <div className="mb-6 rounded-2xl bg-slate-50 p-5 border border-slate-100 text-left">
+        <div className="mb-4 rounded-2xl bg-[#F3F5F9] p-5 text-left">
           <h3 className="text-lg font-bold text-slate-800">{candidate.name || 'Unnamed Candidate'}</h3>
           {subtitleFinal && <p className="mt-1 text-sm font-medium text-slate-500">{subtitleFinal}</p>}
-          <p className="mt-4 text-xl font-bold text-slate-800">{candidate.phone || 'No phone number'}</p>
+          <p className="mt-4 text-sm font-medium text-slate-500">Candidate's number: {candidate.phone || 'No phone number'}</p>
         </div>
 
-        <p className="mb-8 text-sm leading-relaxed text-slate-500 text-left">
-          They'll receive a short message asking whether they're interested in the role. You can record their reply on this card afterwards.
-        </p>
+        {isStageMode && (
+          <div className="mb-6 rounded-2xl bg-[#FFFBF0] p-5 border border-[#FDE68A] text-left">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-[#B45309] mb-2">STAGE MODE — ACTUALLY SENDING TO</p>
+            <p className="text-xl font-bold text-[#92400E] mb-4">{stageNumber}</p>
+            <p className="text-sm font-medium text-[#B45309] leading-relaxed">
+              {candidate.name || 'Candidate'} receives nothing. Set <code>HIRE_X_DEV_STAGE=production</code> to contact candidates for real.
+            </p>
+          </div>
+        )}
 
-        <div className="flex justify-end gap-3">
+        <div className="flex justify-end gap-3 mt-8">
           <button
             onClick={onClose}
             className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-50"
