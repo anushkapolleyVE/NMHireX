@@ -1157,7 +1157,7 @@ def create_job(
 
         extraction_model=settings.EXTRACTION_MODEL,
         extraction_version="v1",
-        confidence_score=data.get("confidence_score")
+        confidence_score=safe_float(data.get("confidence_score"))
     )
 
     db.add(req)
@@ -1175,7 +1175,7 @@ def create_job(
                 raw_text.encode()
             ).hexdigest(),
             output_data=data,
-            confidence_score=data.get("confidence_score"),
+            confidence_score=safe_float(data.get("confidence_score")),
             validation_status="PASSED"
         )
     )
@@ -1788,12 +1788,75 @@ def get_user_dashboard(db: Session, user_id: UUID) -> dict:
         "pipeline": pipeline[:5]
     }
 
+def _send_whatsapp_to_candidate(db: Session, candidate_id: UUID):
+    print(f"--- Attempting WhatsApp Integration for candidate {candidate_id} ---")
+    try:
+        candidate = db.query(Candidate).filter(Candidate.id == candidate_id).first()
+        if not candidate:
+            print("Candidate not found in DB.")
+            return
+
+        import urllib.request
+        import json
+        
+        # Use stage number if configured, otherwise use candidate's phone
+        raw_phone = getattr(settings, "WHATSAPP_STAGE_NUMBER", None)
+        if not raw_phone:
+            raw_phone = str(candidate.phone) if candidate.phone else ""
+            
+        if not raw_phone or raw_phone == "None":
+            print("No phone number available for candidate (and no stage number configured). Skipping.")
+            return
+
+        clean_phone = ''.join(filter(str.isdigit, raw_phone))
+        
+        if clean_phone:
+            if len(clean_phone) == 10:
+                clean_phone = "91" + clean_phone
+            
+            url = "https://nmve.io/whatsapp/api/integrations/whatsapp/messages"
+            headers = {
+                "Content-Type": "application/json"
+            }
+            if getattr(settings, "WHATSAPP_API_KEY", ""):
+                headers["Authorization"] = f"Bearer {settings.WHATSAPP_API_KEY}"
+                headers["api-key"] = settings.WHATSAPP_API_KEY
+            
+            payload = {
+                "to": clean_phone,
+                "type": "template",
+                "template": {
+                    "name": "hello_world",
+                    "language": {
+                        "code": "en_US"
+                    }
+                },
+                "referenceId": f"NMHireX-{str(candidate_id)[:8]}",
+                "callbackUrl": "https://webhook.site/0f0c589e-61fc-4b86-8f30-c1dbd6f5d19d"
+            }
+            
+            print(f"Sending WhatsApp payload to {clean_phone}...")
+            data = json.dumps(payload).encode('utf-8')
+            req = urllib.request.Request(url, data=data, headers=headers, method='POST')
+            
+            try:
+                with urllib.request.urlopen(req) as response:
+                    response_body = response.read().decode('utf-8')
+                    print(f"WhatsApp message sent to {clean_phone}, status: {response.status}")
+                    print(f"Response: {response_body}")
+            except urllib.error.HTTPError as http_err:
+                error_body = http_err.read().decode('utf-8')
+                print(f"WhatsApp API HTTP Error: {http_err.code}")
+                print(f"Error Details: {error_body}")
+            except Exception as api_err:
+                print(f"WhatsApp API Error: {api_err}")
+        else:
+            print("Phone number is invalid or empty after cleaning.")
+    except Exception as e:
+        print(f"Error in WhatsApp integration: {e}")
+
 def mark_candidate_contacted(db: Session, job_id: UUID, candidate_id: UUID):
-    db.execute(
-        text("UPDATE job_candidates SET recruitment_status = 'CONTACTED' WHERE job_id = :job_id AND candidate_id = :candidate_id"),
-        {"job_id": job_id, "candidate_id": candidate_id}
-    )
-    db.commit()
+    update_candidate_status(db, job_id, candidate_id, 'CONTACTED')
 
 
 def get_outreach_candidates(db: Session, user_id: UUID) -> list[dict]:
@@ -1825,6 +1888,9 @@ def update_candidate_status(db: Session, job_id: UUID, candidate_id: UUID, statu
         {"job_id": job_id, "candidate_id": candidate_id, "status": status}
     )
     db.commit()
+    
+    if status.upper() == 'CONTACTED':
+        _send_whatsapp_to_candidate(db, candidate_id)
 
 def get_all_candidates(db: Session, user_id: UUID) -> list[dict]:
     # Fetch all candidates in the database (ensuring each is listed exactly once)

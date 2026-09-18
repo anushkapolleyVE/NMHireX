@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     # OpenAI (GPT-5.6 model for extraction, evaluation, and OCR)
     OPENAI_API_KEY: str = ""
 
+    # WhatsApp API
+    WHATSAPP_API_KEY: str = ""
+    WHATSAPP_STAGE_NUMBER: str = ""
+
     # Model used for structured JSON extraction (JD + resume).
     EXTRACTION_MODEL: str = "gpt-4o"
 
