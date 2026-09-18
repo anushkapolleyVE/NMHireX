@@ -636,7 +636,7 @@ export default function MatchAgent() {
   // CONTACT
   // ==========================================================
 
-  const handleContact = async (candidateId) => {
+  const handleContact = async (candidateId, targetPhone = null) => {
 
     setContacted(
       (prev) => ({
@@ -646,7 +646,7 @@ export default function MatchAgent() {
     );
     try {
       if (jobId) {
-        await updateCandidateStatus(jobId, candidateId, 'CONTACTED');
+        await updateCandidateStatus(jobId, candidateId, 'CONTACTED', targetPhone);
       }
     } catch (err) {
       console.error('Failed to mark contacted', err);
@@ -1587,11 +1587,11 @@ export default function MatchAgent() {
         isOpen={whatsappModalOpen}
         onClose={() => setWhatsappModalOpen(false)}
         candidate={selectedWhatsappCandidate}
-        onSend={async (c) => {
+        onSend={async (c, targetPhone) => {
           try {
             const cId = c.candidate_id || c.id || c.candidateKey;
             setWhatsappContacted((prev) => ({ ...prev, [cId]: true }));
-            handleContact(cId);
+            handleContact(cId, targetPhone);
           } catch (err) {
             console.error('Failed to mark contacted', err);
           }

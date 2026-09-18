@@ -1788,7 +1788,7 @@ def get_user_dashboard(db: Session, user_id: UUID) -> dict:
         "pipeline": pipeline[:5]
     }
 
-def _send_whatsapp_to_candidate(db: Session, candidate_id: UUID):
+def _send_whatsapp_to_candidate(db: Session, candidate_id: UUID, target_phone: str | None = None):
     print(f"--- Attempting WhatsApp Integration for candidate {candidate_id} ---")
     try:
         candidate = db.query(Candidate).filter(Candidate.id == candidate_id).first()
@@ -1799,8 +1799,10 @@ def _send_whatsapp_to_candidate(db: Session, candidate_id: UUID):
         import urllib.request
         import json
         
-        # Use stage number if configured, otherwise use candidate's phone
-        raw_phone = getattr(settings, "WHATSAPP_STAGE_NUMBER", None)
+        # Use target_phone if provided, else use stage number if configured, otherwise use candidate's phone
+        raw_phone = target_phone
+        if not raw_phone:
+            raw_phone = getattr(settings, "WHATSAPP_STAGE_NUMBER", None)
         if not raw_phone:
             raw_phone = str(candidate.phone) if candidate.phone else ""
             
@@ -1855,8 +1857,8 @@ def _send_whatsapp_to_candidate(db: Session, candidate_id: UUID):
     except Exception as e:
         print(f"Error in WhatsApp integration: {e}")
 
-def mark_candidate_contacted(db: Session, job_id: UUID, candidate_id: UUID):
-    update_candidate_status(db, job_id, candidate_id, 'CONTACTED')
+def mark_candidate_contacted(db: Session, job_id: UUID, candidate_id: UUID, target_phone: str | None = None):
+    update_candidate_status(db, job_id, candidate_id, 'CONTACTED', target_phone)
 
 
 def get_outreach_candidates(db: Session, user_id: UUID) -> list[dict]:
@@ -1882,7 +1884,7 @@ def get_outreach_candidates(db: Session, user_id: UUID) -> list[dict]:
         })
     return results
 
-def update_candidate_status(db: Session, job_id: UUID, candidate_id: UUID, status: str):
+def update_candidate_status(db: Session, job_id: UUID, candidate_id: UUID, status: str, target_phone: str | None = None):
     db.execute(
         text("UPDATE job_candidates SET recruitment_status = :status, updated_at = now() WHERE job_id = :job_id AND candidate_id = :candidate_id"),
         {"job_id": job_id, "candidate_id": candidate_id, "status": status}
@@ -1890,7 +1892,7 @@ def update_candidate_status(db: Session, job_id: UUID, candidate_id: UUID, statu
     db.commit()
     
     if status.upper() == 'CONTACTED':
-        _send_whatsapp_to_candidate(db, candidate_id)
+        _send_whatsapp_to_candidate(db, candidate_id, target_phone)
 
 def get_all_candidates(db: Session, user_id: UUID) -> list[dict]:
     # Fetch all candidates in the database (ensuring each is listed exactly once)

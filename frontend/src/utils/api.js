@@ -255,14 +255,14 @@ export const getOutreachData = async () => {
   return await res.json();
 };
 
-export const updateCandidateStatus = async (jobId, candidateId, status) => {
+export const updateCandidateStatus = async (jobId, candidateId, status, targetPhone = null) => {
   const res = await fetch(`${API_BASE_URL}/user/jobs/${jobId}/candidates/${candidateId}/status`, {
     method: 'POST',
     headers: {
       ...getHeaders(),
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ status })
+    body: JSON.stringify({ status, target_phone: targetPhone })
   });
   if (!res.ok) throw new Error('Failed to update candidate status');
   return await res.json();

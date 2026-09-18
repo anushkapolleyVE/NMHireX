@@ -1584,6 +1584,7 @@ def api_get_outreach(
 
 class StatusUpdateRequest(BaseModel):
     status: str
+    target_phone: str | None = None
 
 @router.post("/user/jobs/{job_id}/candidates/{candidate_id}/status")
 def api_update_candidate_status(
@@ -1596,5 +1597,5 @@ def api_update_candidate_status(
     if user.role == "RECRUITER" and user.status != "APPROVED":
         raise HTTPException(status_code=403, detail="Recruiter account is not approved")
         
-    update_candidate_status(db, job_id, candidate_id, req.status)
+    update_candidate_status(db, job_id, candidate_id, req.status, req.target_phone)
     return {"message": "Status updated successfully"}
