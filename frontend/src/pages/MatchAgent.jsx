@@ -300,6 +300,8 @@ export default function MatchAgent() {
   const [isSearching, setIsSearching] =
     useState(false);
 
+  const [screeningProgress, setScreeningProgress] = useState(0);
+
   const [searchComplete, setSearchComplete] =
     useState(false);
 
@@ -514,16 +516,27 @@ export default function MatchAgent() {
     if (!idToUse) return;
 
     setIsSearching(true);
+    setScreeningProgress(0);
     setSearchComplete(false);
     setStatus("Loading candidates");
 
+    const progressInterval = setInterval(() => {
+      setScreeningProgress((prev) => (prev >= 95 ? prev : prev + 15));
+    }, 200);
+
     try {
       const candidates = await getJobCandidates(idToUse);
+      
+      clearInterval(progressInterval);
+      setScreeningProgress(100);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
       setCandidates(candidates || []);
       setSearchComplete(true);
       setStatus("Screening"); // Reusing this status string to show results view
       setCandidatesModalOpen(true); // Open directly to the candidate list
     } catch (err) {
+      clearInterval(progressInterval);
       console.error("Failed to fetch existing candidates:", err);
       setError(err.message || "Failed to fetch candidates.");
       setStatus("Criteria ready");
@@ -549,11 +562,19 @@ export default function MatchAgent() {
 
 
     setIsSearching(true);
+    setScreeningProgress(0);
 
     setSearchComplete(false);
 
     setStatus("Screening");
 
+    const progressInterval = setInterval(() => {
+      setScreeningProgress((prev) => {
+        if (prev >= 95) return prev;
+        const increment = prev < 50 ? 5 : prev < 80 ? 2 : 1;
+        return prev + increment;
+      });
+    }, 500);
 
     try {
 
@@ -565,6 +586,10 @@ export default function MatchAgent() {
         "Screening result:",
         result
       );
+
+      clearInterval(progressInterval);
+      setScreeningProgress(100);
+      await new Promise(resolve => setTimeout(resolve, 400));
 
 
       // ------------------------------------------------------
@@ -592,6 +617,7 @@ export default function MatchAgent() {
       setStatus("Screening");
 
     } catch (err) {
+      clearInterval(progressInterval);
 
       console.error(
         "Screening failed:",
@@ -852,7 +878,10 @@ export default function MatchAgent() {
                   <div className="absolute inset-0 rounded-full border-4 border-slate-800"></div>
                   <div className="absolute inset-0 rounded-full border-4 border-brand border-t-transparent animate-spin"></div>
                 </div>
-                <h3 className="text-xl font-bold text-white mb-2">Loading candidates...</h3>
+                <h3 className="text-xl font-bold text-white mb-2">Loading candidates... {screeningProgress}%</h3>
+                <div className="w-64 max-w-full bg-slate-800 rounded-full h-1.5 mt-2">
+                  <div className="bg-brand h-1.5 rounded-full transition-all duration-300" style={{ width: `${screeningProgress}%` }}></div>
+                </div>
               </div>
             ) : candidates.length === 0 ? (
               <div className="text-center py-20 text-slate-400">No candidates found for this job.</div>
@@ -1331,7 +1360,7 @@ export default function MatchAgent() {
                           <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
                           <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" fill="currentColor" className="opacity-75" />
                         </svg>
-                        Screening candidates…
+                        Screening candidates… {screeningProgress}%
                       </>
                     ) : (
                       <>
@@ -1475,37 +1504,36 @@ export default function MatchAgent() {
 
                 <div className="rounded-2xl border border-slate-700 bg-slate-900/40 p-12 text-center">
 
-                  <svg
-                    className="mx-auto size-10 animate-spin text-brand"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                  >
-
-                    <circle
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="3"
-                      className="opacity-25"
-                    />
-
-                    <path
-                      d="M4 12a8 8 0 018-8"
-                      stroke="currentColor"
-                      strokeWidth="3"
-                      strokeLinecap="round"
-                    />
-
-                  </svg>
+                  <style>
+                    {`
+                      @keyframes scan {
+                        0%, 100% { top: 0%; opacity: 0; }
+                        10%, 90% { opacity: 1; }
+                        50% { top: 100%; }
+                      }
+                      .animate-scan {
+                        animation: scan 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+                      }
+                    `}
+                  </style>
+                  <div className="relative w-16 h-20 bg-slate-800 rounded-lg border-2 border-slate-700 mx-auto overflow-hidden shadow-[0_0_15px_rgba(59,130,246,0.15)] mb-4">
+                    <div className="absolute top-4 left-3 right-3 h-1 bg-slate-600 rounded"></div>
+                    <div className="absolute top-8 left-3 right-6 h-1 bg-slate-600 rounded"></div>
+                    <div className="absolute top-12 left-3 right-4 h-1 bg-slate-600 rounded"></div>
+                    <div className="absolute top-16 left-3 right-8 h-1 bg-slate-600 rounded"></div>
+                    <div className="absolute left-0 right-0 h-[2px] bg-brand shadow-[0_0_8px_2px_#3b82f6] animate-scan"></div>
+                  </div>
 
 
                   <p className="mt-4 text-base font-bold text-white">
-                    Screening candidates…
+                    Screening candidates… {screeningProgress}%
                   </p>
 
+                  <div className="w-full max-w-xs mx-auto bg-slate-800 rounded-full h-2 mt-4">
+                    <div className="bg-brand h-2 rounded-full transition-all duration-300" style={{ width: `${screeningProgress}%` }}></div>
+                  </div>
 
-                  <p className="mt-2 text-sm text-slate-500">
+                  <p className="mt-6 text-sm text-slate-500">
                     The AI screening engine is evaluating candidates against the job requirements.
                   </p>
 
