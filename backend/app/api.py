@@ -1603,7 +1603,7 @@ async def whatsapp_webhook(
         data = payload.get("data", {})
 
         # Only process incoming candidate messages
-        event = data.get("event")
+        event = payload.get("event")
 
         if event != "whatsapp.message.received":
             print(f"Ignoring WhatsApp event: {event}")
