@@ -2102,7 +2102,29 @@ def get_all_candidates(db: Session, user_id: UUID) -> list[dict]:
                     scoreLabel = "Excellent Match"
                 else:
                     scoreLabel = lbl
-                
+
+        # Find the interview link sent to this candidate (outbound message containing Teams link)
+        interview_link = None
+        if jc_row:
+            jc_obj = jc_row[0]
+            outbound_interview = (
+                db.query(CandidateContact)
+                .filter(
+                    CandidateContact.job_candidate_id == jc_obj.id,
+                    CandidateContact.channel == "WHATSAPP",
+                    CandidateContact.message_type == "OUTBOUND",
+                    CandidateContact.message.contains("teams.microsoft.com")
+                )
+                .order_by(CandidateContact.created_at.desc())
+                .first()
+            )
+            if outbound_interview and outbound_interview.message:
+                # Extract the URL from the message
+                import re
+                urls = re.findall(r'https?://\S+', outbound_interview.message)
+                if urls:
+                    interview_link = urls[0].rstrip("!")
+
         results.append({
             "id": str(candidate.id),
             "job_id": job_id,
@@ -2116,6 +2138,7 @@ def get_all_candidates(db: Session, user_id: UUID) -> list[dict]:
             "job": job_title,
             "skills": ", ".join([s.get("name") or s.get("skill") or s.get("skill_name") or str(s) if isinstance(s, dict) else str(s) for s in candidate.normalized_profile.get("skills", [])][:5]) if candidate.normalized_profile and candidate.normalized_profile.get("skills") else "-",
             "stage": stage,
+            "interview_link": interview_link,
             "experience_details": candidate.normalized_profile.get("experiences", []) if candidate.normalized_profile else [],
             "all_skills": candidate.normalized_profile.get("skills", []) if candidate.normalized_profile else []
         })
