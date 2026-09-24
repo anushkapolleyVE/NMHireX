@@ -33,28 +33,32 @@ export default function SyncResumeModal({ isOpen, onClose }) {
     }
 
     try {
-      // Send request to backend
-      const res = await fetch('http://localhost:8000/api/resumes/sync', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Id': '00000000-0000-0000-0000-000000000000' // Using fallback or token logic if needed. In development it uses this.
-        },
-        body: JSON.stringify(payload)
-      });
-
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.detail || 'Sync failed');
-      }
-
-      const data = await res.json();
-      setSyncResult(data);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setIsSyncing(false);
+  // Send request to backend
+  const res = await fetch(
+    `${import.meta.env.VITE_API_BASE_URL}/resumes/sync`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-User-Id': '00000000-0000-0000-0000-000000000000'
+      },
+      body: JSON.stringify(payload)
     }
+  );
+
+  if (!res.ok) {
+    const errData = await res.json();
+    throw new Error(errData.detail || 'Sync failed');
+  }
+
+  const data = await res.json();
+  setSyncResult(data);
+
+} catch (err) {
+  setError(err.message);
+} finally {
+  setIsSyncing(false);
+}
   };
 
   return (

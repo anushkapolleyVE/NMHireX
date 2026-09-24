@@ -20,9 +20,24 @@ from docx import Document
 import pymupdf
 from PIL import Image
 from .config import settings
-from .models import (User, Job, JobRequirement, Candidate, Resume, CandidateSkill,
-    CandidateExperience, CandidateEducation, CandidateCertification, CandidateProject,
-    JobCandidate, ScreeningResult, ScreeningRun, AIExtractionLog)
+from datetime import datetime
+from .models import (
+    User,
+    Job,
+    JobRequirement,
+    Candidate,
+    Resume,
+    CandidateSkill,
+    CandidateExperience,
+    CandidateEducation,
+    CandidateCertification,
+    CandidateProject,
+    JobCandidate,
+    ScreeningResult,
+    ScreeningRun,
+    AIExtractionLog,
+    CandidateContact,
+)
 
 OPENAI_API_KEY = settings.OPENAI_API_KEY
 
@@ -1788,7 +1803,12 @@ def get_user_dashboard(db: Session, user_id: UUID) -> dict:
         "pipeline": pipeline[:5]
     }
 
-def _send_whatsapp_to_candidate(db: Session, candidate_id: UUID, target_phone: str | None = None):
+def _send_whatsapp_to_candidate(
+    db: Session,
+    job_id: UUID,
+    candidate_id: UUID,
+    target_phone: str | None = None
+):
     print(f"--- Attempting WhatsApp Integration for candidate {candidate_id} ---")
     try:
         candidate = db.query(Candidate).filter(Candidate.id == candidate_id).first()
@@ -1798,6 +1818,19 @@ def _send_whatsapp_to_candidate(db: Session, candidate_id: UUID, target_phone: s
 
         import urllib.request
         import json
+
+        # Find the JobCandidate record
+        job_candidate = db.scalar(
+            select(JobCandidate).where(
+                JobCandidate.job_id == job_id,
+                JobCandidate.candidate_id == candidate_id
+            )
+        )
+
+        if not job_candidate:
+            print("JobCandidate not found.")
+            return
+
         
         # Use target_phone if provided, else use stage number if configured, otherwise use candidate's phone
         raw_phone = target_phone
@@ -1831,7 +1864,7 @@ def _send_whatsapp_to_candidate(db: Session, candidate_id: UUID, target_phone: s
                         "body": "Hi"
             },
                 "referenceId": f"NMHireX-{str(candidate_id)[:8]}",
-                "callbackUrl": "https://webhook.site/0f0c589e-61fc-4b86-8f30-c1dbd6f5d19d"
+                "callbackUrl": "https://nmhirex.onrender.com/api/webhooks/whatsapp"
             }
             
             print(f"Sending WhatsApp payload to {clean_phone}...")
@@ -1841,21 +1874,57 @@ def _send_whatsapp_to_candidate(db: Session, candidate_id: UUID, target_phone: s
             try:
                 with urllib.request.urlopen(req) as response:
                     response_body = response.read().decode('utf-8')
-                    print(f"WhatsApp message sent to {clean_phone}, status: {response.status}")
+
+                    print(
+                        f"WhatsApp message sent to {clean_phone}, "
+                        f"status: {response.status}"
+                    )
                     print(f"Response: {response_body}")
+
+                    # Save outgoing WhatsApp message in candidate_contacts
+                    contact = CandidateContact(
+                        job_candidate_id=job_candidate.id,
+                        channel="WHATSAPP",
+                        message_type="OUTBOUND",
+                        message="Hi",
+                        provider="NMVE",
+                        status="SENT",
+                        sent_at=datetime.utcnow(),
+                    )
+
+                    db.add(contact)
+                    db.commit()
+
+                    print("WhatsApp message saved to candidate_contacts.")
+
             except urllib.error.HTTPError as http_err:
                 error_body = http_err.read().decode('utf-8')
                 print(f"WhatsApp API HTTP Error: {http_err.code}")
                 print(f"Error Details: {error_body}")
+
             except Exception as api_err:
                 print(f"WhatsApp API Error: {api_err}")
+
         else:
             print("Phone number is invalid or empty after cleaning.")
+
     except Exception as e:
         print(f"Error in WhatsApp integration: {e}")
 
-def mark_candidate_contacted(db: Session, job_id: UUID, candidate_id: UUID, target_phone: str | None = None):
-    update_candidate_status(db, job_id, candidate_id, 'CONTACTED', target_phone)
+
+def mark_candidate_contacted(
+    db: Session,
+    job_id: UUID,
+    candidate_id: UUID,
+    target_phone: str | None = None
+):
+    update_candidate_status(
+        db,
+        job_id,
+        candidate_id,
+        'CONTACTED',
+        target_phone
+    )
 
 
 def get_outreach_candidates(db: Session, user_id: UUID) -> list[dict]:
@@ -1889,7 +1958,7 @@ def update_candidate_status(db: Session, job_id: UUID, candidate_id: UUID, statu
     db.commit()
     
     if status.upper() == 'CONTACTED':
-        _send_whatsapp_to_candidate(db, candidate_id, target_phone)
+        _send_whatsapp_to_candidate(db, job_id, candidate_id, target_phone)
 
 def get_all_candidates(db: Session, user_id: UUID) -> list[dict]:
     # Fetch all candidates in the database (ensuring each is listed exactly once)

@@ -752,12 +752,13 @@ from fastapi import (
     Form,
     HTTPException,
     UploadFile,
+    Request,
 )
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from .database import get_db
-from .models import User, Job
+from .models import User, Job, Candidate, JobCandidate, CandidateContact
 
 from .tool_functions import (
     ingest_resume_folder,
@@ -1581,6 +1582,25 @@ def api_get_outreach(
     db: Session = Depends(get_db)
 ):
     return get_outreach_candidates(db, user.id)
+
+
+@router.post("/webhooks/whatsapp")
+async def whatsapp_webhook(
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    payload = await request.json()
+
+    print("========================================")
+    print("INCOMING WHATSAPP WEBHOOK")
+    print(payload)
+    print("========================================")
+
+    return {
+        "success": True,
+        "message": "WhatsApp webhook received",
+        "data": payload
+    }
 
 class StatusUpdateRequest(BaseModel):
     status: str

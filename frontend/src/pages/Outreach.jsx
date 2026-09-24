@@ -26,7 +26,7 @@ export default function Outreach() {
     try {
       await updateCandidateStatus(jobId, candidateId, status);
       // Update local state
-      setCandidates(prev => prev.map(c => 
+      setCandidates(prev => prev.map(c =>
         (c.id === candidateId && c.job_id === jobId) ? { ...c, status } : c
       ));
     } catch (err) {
@@ -66,7 +66,7 @@ export default function Outreach() {
                     <h3 className="text-xl font-bold text-white mb-1">{candidate.name}</h3>
                     <p className="text-sm text-slate-400">{candidate.job}</p>
                   </div>
-                  
+
                   <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto shrink-0">
                     {candidate.status === 'NOT_INTERESTED' ? (
                       <span className="rounded-xl bg-slate-800/80 px-4 py-2 text-sm font-bold text-slate-500 ring-1 ring-slate-700">Not Interested</span>
