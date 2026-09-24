@@ -743,6 +743,7 @@ Recruiter approval:
 from .auth import require_admin
 from pathlib import Path
 from uuid import UUID
+from datetime import datetime
 
 from pydantic import BaseModel
 from fastapi import (
@@ -756,6 +757,7 @@ from fastapi import (
 )
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
+from sqlalchemy import cast, String
 
 from .database import get_db
 from .models import User, Job, Candidate, JobCandidate, CandidateContact
@@ -1589,23 +1591,158 @@ async def whatsapp_webhook(
     request: Request,
     db: Session = Depends(get_db)
 ):
-    payload = await request.json()
+    try:
+        payload = await request.json()
 
-    print("========================================")
-    print("INCOMING WHATSAPP WEBHOOK")
-    print(payload)
-    print("========================================")
+        print("========================================")
+        print("INCOMING WHATSAPP WEBHOOK")
+        print(payload)
+        print("========================================")
 
-    return {
-        "success": True,
-        "message": "WhatsApp webhook received",
-        "data": payload
-    }
+        data = payload.get("data", {})
+
+        # Only process incoming candidate messages
+        event = data.get("event")
+
+        if event != "whatsapp.message.received":
+            print(f"Ignoring WhatsApp event: {event}")
+
+            return {
+                "success": True,
+                "message": "Event received but not a candidate message"
+            }
+
+        # Get candidate's reply
+        response_text = (
+            data.get("text", {}).get("body")
+            if isinstance(data.get("text"), dict)
+            else data.get("text")
+        )
+
+        reference_id = data.get("referenceId")
+        message_id = data.get("messageId")
+
+        print("Reference ID:", reference_id)
+        print("Message ID:", message_id)
+        print("Candidate Response:", response_text)
+
+        if not reference_id:
+            return {
+                "success": False,
+                "message": "referenceId missing"
+            }
+
+        if not response_text:
+            return {
+                "success": False,
+                "message": "Response text missing"
+            }
+
+        # referenceId format:
+        # NMHireX-<first 8 characters of candidate UUID>
+        candidate_prefix = reference_id.replace(
+            "NMHireX-", "",
+            1
+        )
+
+        # Find candidate
+        candidate = (
+            db.query(Candidate)
+            .filter(
+                cast(Candidate.id, String).like(
+                    f"{candidate_prefix}%"
+                )
+            )
+            .first()
+        )
+
+        if not candidate:
+            print(
+                "Candidate not found for reference:",
+                reference_id
+            )
+
+            return {
+                "success": False,
+                "message": "Candidate not found"
+            }
+
+        print("Candidate found:", candidate.id)
+        print("Candidate name:", candidate.name)
+
+        # Find previous WhatsApp message
+        outbound_contact = (
+            db.query(CandidateContact)
+            .join(
+                JobCandidate,
+                JobCandidate.id ==
+                CandidateContact.job_candidate_id
+            )
+            .filter(
+                JobCandidate.candidate_id == candidate.id,
+                CandidateContact.channel == "WHATSAPP",
+                CandidateContact.message_type == "OUTBOUND"
+            )
+            .order_by(
+                CandidateContact.created_at.desc()
+            )
+            .first()
+        )
+
+        if not outbound_contact:
+            return {
+                "success": False,
+                "message": "Outbound WhatsApp contact not found"
+            }
+
+        # Save candidate response
+        inbound_contact = CandidateContact(
+            job_candidate_id=outbound_contact.job_candidate_id,
+            channel="WHATSAPP",
+            message_type="INBOUND",
+            message=response_text,
+            provider="NMVE",
+            external_message_id=message_id,
+            status="RECEIVED",
+            responded_at=datetime.utcnow(),
+            response_text=response_text,
+        )
+
+        db.add(inbound_contact)
+        db.commit()
+        db.refresh(inbound_contact)
+
+        print("========================================")
+        print("WHATSAPP RESPONSE SAVED TO DATABASE")
+        print("Candidate:", candidate.name)
+        print("Response:", response_text)
+        print("Contact ID:", inbound_contact.id)
+        print("========================================")
+
+        return {
+            "success": True,
+            "message": "WhatsApp response received and saved",
+            "contact_id": str(inbound_contact.id)
+        }
+
+    except Exception as e:
+        db.rollback()
+
+        print("========================================")
+        print("WHATSAPP WEBHOOK ERROR")
+        print(str(e))
+        print("========================================")
+
+        return {
+            "success": False,
+            "message": "Failed to process WhatsApp webhook",
+            "error": str(e)
+        }
+
 
 class StatusUpdateRequest(BaseModel):
     status: str
     target_phone: str | None = None
-
 @router.post("/user/jobs/{job_id}/candidates/{candidate_id}/status")
 def api_update_candidate_status(
     job_id: UUID,
