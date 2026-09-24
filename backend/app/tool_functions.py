@@ -1926,28 +1926,79 @@ def mark_candidate_contacted(
         target_phone
     )
 
-
 def get_outreach_candidates(db: Session, user_id: UUID) -> list[dict]:
-    # Get all candidates who have been contacted, interested, or not interested
-    # They should have recruitment_status IN ('CONTACTED', 'INTERESTED', 'NOT_INTERESTED', 'INTERVIEW_LINK_SENT')
+    # Get all candidates who have been contacted, interested,
+    # not interested, or have received an interview link.
     rows = db.execute(
         select(JobCandidate, Job, Candidate)
         .join(Job, Job.id == JobCandidate.job_id)
         .join(Candidate, Candidate.id == JobCandidate.candidate_id)
-        .where(JobCandidate.recruitment_status.in_(['CONTACTED', 'INTERESTED', 'NOT_INTERESTED', 'INTERVIEW_LINK_SENT']))
+        .where(
+            JobCandidate.recruitment_status.in_([
+                'CONTACTED',
+                'INTERESTED',
+                'NOT_INTERESTED',
+                'INTERVIEW_LINK_SENT'
+            ])
+        )
         .order_by(JobCandidate.updated_at.desc())
     ).all()
-    
+
     results = []
+
     for jc, job, candidate in rows:
+
+        # Find the latest WhatsApp response from this candidate
+        latest_response = (
+            db.query(CandidateContact)
+            .filter(
+                CandidateContact.job_candidate_id == jc.id,
+                CandidateContact.channel == "WHATSAPP",
+                CandidateContact.message_type == "INBOUND"
+            )
+            .order_by(
+                CandidateContact.created_at.desc()
+            )
+            .first()
+        )
+
+        response_text = None
+        response_intent = None
+        responded_at = None
+
+        if latest_response:
+            response_text = (
+                latest_response.response_text
+                or latest_response.message
+            )
+
+            # Intent will be populated by the WhatsApp webhook
+            response_intent = getattr(
+                latest_response,
+                "response_intent",
+                None
+            )
+
+            responded_at = latest_response.responded_at
+
         results.append({
             "id": str(candidate.id),
             "job_id": str(job.id),
             "job_candidate_id": str(jc.id),
             "name": candidate.name or "Unnamed Candidate",
             "job": job.title or "Unknown Role",
-            "status": jc.recruitment_status
+            "status": jc.recruitment_status,
+
+            # WhatsApp response information
+            "response_text": response_text,
+            "response_intent": response_intent,
+            "responded_at": (
+                responded_at.isoformat()
+                if responded_at
+                else None
+            )
         })
+
     return results
 
 def update_candidate_status(db: Session, job_id: UUID, candidate_id: UUID, status: str, target_phone: str | None = None):
