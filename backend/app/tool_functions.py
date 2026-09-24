@@ -1915,6 +1915,43 @@ def _send_whatsapp_to_candidate(
         print(f"Error in WhatsApp integration: {e}")
 
 
+def _send_whatsapp_text_message(raw_phone: str, text_message: str):
+    """Send a plain text WhatsApp message to a phone number."""
+    try:
+        import urllib.request
+        import json
+
+        if not raw_phone:
+            return
+
+        clean_phone = ''.join(filter(str.isdigit, str(raw_phone)))
+        if len(clean_phone) == 10:
+            clean_phone = "91" + clean_phone
+
+        if not clean_phone:
+            return
+
+        url = "https://nmve.io/whatsapp/api/integrations/whatsapp/messages"
+        headers = {"Content-Type": "application/json"}
+        if getattr(settings, "WHATSAPP_API_KEY", ""):
+            headers["Authorization"] = f"Bearer {settings.WHATSAPP_API_KEY}"
+            headers["api-key"] = settings.WHATSAPP_API_KEY
+
+        payload = {
+            "to": clean_phone,
+            "type": "text",
+            "text": {"body": text_message}
+        }
+
+        data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(url, data=data, headers=headers, method='POST')
+        with urllib.request.urlopen(req) as response:
+            print(f"WhatsApp reply sent to {clean_phone}, status: {response.status}")
+
+    except Exception as e:
+        print(f"Error sending WhatsApp reply: {e}")
+
+
 def mark_candidate_contacted(
     db: Session,
     job_id: UUID,
@@ -2068,7 +2105,29 @@ def get_all_candidates(db: Session, user_id: UUID) -> list[dict]:
                     scoreLabel = "Excellent Match"
                 else:
                     scoreLabel = lbl
-                
+
+        # Find the interview link sent to this candidate (outbound message containing Teams link)
+        interview_link = None
+        if jc_row:
+            jc_obj = jc_row[0]
+            outbound_interview = (
+                db.query(CandidateContact)
+                .filter(
+                    CandidateContact.job_candidate_id == jc_obj.id,
+                    CandidateContact.channel == "WHATSAPP",
+                    CandidateContact.message_type == "OUTBOUND",
+                    CandidateContact.message.contains("teams.microsoft.com")
+                )
+                .order_by(CandidateContact.created_at.desc())
+                .first()
+            )
+            if outbound_interview and outbound_interview.message:
+                # Extract the URL from the message
+                import re
+                urls = re.findall(r'https?://\S+', outbound_interview.message)
+                if urls:
+                    interview_link = urls[0].rstrip("!")
+
         results.append({
             "id": str(candidate.id),
             "job_id": job_id,
@@ -2082,6 +2141,7 @@ def get_all_candidates(db: Session, user_id: UUID) -> list[dict]:
             "job": job_title,
             "skills": ", ".join([s.get("name") or s.get("skill") or s.get("skill_name") or str(s) if isinstance(s, dict) else str(s) for s in candidate.normalized_profile.get("skills", [])][:5]) if candidate.normalized_profile and candidate.normalized_profile.get("skills") else "-",
             "stage": stage,
+            "interview_link": interview_link,
             "experience_details": candidate.normalized_profile.get("experiences", []) if candidate.normalized_profile else [],
             "all_skills": candidate.normalized_profile.get("skills", []) if candidate.normalized_profile else []
         })

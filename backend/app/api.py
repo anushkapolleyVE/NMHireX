@@ -1728,10 +1728,101 @@ async def whatsapp_webhook(
         print("Contact ID:", inbound_contact.id)
         print("========================================")
 
+        # --- Intent Detection via OpenAI ---
+        intent = "NEUTRAL"
+        try:
+            import openai
+            openai_client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
+
+            completion = openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are a recruitment assistant analyzing a candidate's WhatsApp reply to a job opportunity message. "
+                            "Classify the candidate's response intent as exactly one of: POSITIVE, NEGATIVE, or NEUTRAL.\n\n"
+                            "POSITIVE: candidate is interested, wants to proceed, open to discussing, asking for details, or any affirmative response.\n"
+                            "NEGATIVE: candidate is not interested, declines, asks to stop contact, is unavailable, or any rejection.\n"
+                            "NEUTRAL: unclear, irrelevant, or ambiguous response.\n\n"
+                            "Reply with ONLY one word: POSITIVE, NEGATIVE, or NEUTRAL."
+                        )
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Candidate reply: {response_text}"
+                    }
+                ],
+                max_tokens=10,
+                temperature=0
+            )
+
+            raw_intent = completion.choices[0].message.content.strip().upper()
+            if raw_intent in ("POSITIVE", "NEGATIVE", "NEUTRAL"):
+                intent = raw_intent
+
+        except Exception as ai_err:
+            print(f"OpenAI intent detection failed, falling back to keyword: {ai_err}")
+            # Keyword fallback
+            lower = response_text.lower()
+            positive_words = ["yes", "interested", "sure", "okay", "ok", "please", "would like", "open", "available", "happy to", "love to", "definitely", "absolutely", "great", "sounds good"]
+            negative_words = ["no", "not interested", "decline", "stop", "don't contact", "unsubscribe", "not looking", "busy", "cannot", "can't", "won't", "no thanks", "nope"]
+            if any(w in lower for w in negative_words):
+                intent = "NEGATIVE"
+            elif any(w in lower for w in positive_words):
+                intent = "POSITIVE"
+
+        print(f"Detected intent: {intent}")
+
+        # Save intent to inbound_contact
+        inbound_contact.response_intent = intent
+        db.commit()
+
+        # Update job_candidate status and send auto-reply
+        job_candidate_rec = db.query(JobCandidate).filter(
+            JobCandidate.id == outbound_contact.job_candidate_id
+        ).first()
+
+        if job_candidate_rec:
+            from sqlalchemy import text as sql_text
+            from .tool_functions import _send_whatsapp_text_message
+
+            if intent == "POSITIVE":
+                # Mark as INTERESTED
+                db.execute(
+                    sql_text("UPDATE job_candidates SET recruitment_status = 'INTERESTED', updated_at = now() WHERE id = :id"),
+                    {"id": job_candidate_rec.id}
+                )
+                db.commit()
+
+                # Send interview link message
+                interview_msg = (
+                    "Great news! 🎉 We'd love to move forward with your application.\n\n"
+                    "Here is your interview link:\n"
+                    "https://teams.microsoft.com/l/meetup-join/interview\n\n"
+                    "Please join at the scheduled time. We look forward to speaking with you!"
+                )
+                _send_whatsapp_text_message(candidate.phone, interview_msg)
+                print(f"Sent interview link to {candidate.name}")
+
+            elif intent == "NEGATIVE":
+                # Mark as NOT_INTERESTED
+                db.execute(
+                    sql_text("UPDATE job_candidates SET recruitment_status = 'NOT_INTERESTED', updated_at = now() WHERE id = :id"),
+                    {"id": job_candidate_rec.id}
+                )
+                db.commit()
+
+                # Send thank you message
+                thank_you_msg = "Thank you for your response. We wish you all the best in your career journey! 🙏"
+                _send_whatsapp_text_message(candidate.phone, thank_you_msg)
+                print(f"Sent thank-you to {candidate.name}")
+
         return {
             "success": True,
-            "message": "WhatsApp response received and saved",
-            "contact_id": str(inbound_contact.id)
+            "message": "WhatsApp response received and processed",
+            "contact_id": str(inbound_contact.id),
+            "intent": intent
         }
 
     except Exception as e:
