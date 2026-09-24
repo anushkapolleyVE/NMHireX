@@ -176,7 +176,7 @@ def read_file(path: str) -> str:
         return p.read_text(
             encoding="utf-8",
             errors="ignore"
-        )
+        ) 
 
     if p.suffix.lower() in [".png", ".jpg", ".jpeg"]:
         try:
@@ -1826,13 +1826,10 @@ def _send_whatsapp_to_candidate(db: Session, candidate_id: UUID, target_phone: s
             
             payload = {
                 "to": clean_phone,
-                "type": "template",
-                "template": {
-                    "name": "hello_world",
-                    "language": {
-                        "code": "en_US"
-                    }
-                },
+                "type": "text",
+                "text": {
+                        "body": "Hi"
+            },
                 "referenceId": f"NMHireX-{str(candidate_id)[:8]}",
                 "callbackUrl": "https://webhook.site/0f0c589e-61fc-4b86-8f30-c1dbd6f5d19d"
             }
