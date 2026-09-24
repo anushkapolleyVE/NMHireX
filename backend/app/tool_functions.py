@@ -1859,13 +1859,10 @@ def _send_whatsapp_to_candidate(
             
             payload = {
                 "to": clean_phone,
-                "type": "template",
-                "template": {
-                    "name": "hello_world",
-                    "language": {
-                        "code": "en_US"
-                    }
-                },
+                "type": "text",
+                "text": {
+                        "body": "Hi"
+            },
                 "referenceId": f"NMHireX-{str(candidate_id)[:8]}",
                 "callbackUrl": "https://nmhirex.onrender.com/api/webhooks/whatsapp"
             }
@@ -1949,22 +1946,15 @@ def get_outreach_candidates(db: Session, user_id: UUID) -> list[dict]:
             "job_candidate_id": str(jc.id),
             "name": candidate.name or "Unnamed Candidate",
             "job": job.title or "Unknown Role",
-            "status": jc.recruitment_status,
-            "replied_message": jc.replied_message
+            "status": jc.recruitment_status
         })
     return results
 
-def update_candidate_status(db: Session, job_id: UUID, candidate_id: UUID, status: str, target_phone: str | None = None, replied_message: str | None = None):
-    if replied_message is not None:
-        db.execute(
-            text("UPDATE job_candidates SET recruitment_status = :status, replied_message = :replied_message, updated_at = now() WHERE job_id = :job_id AND candidate_id = :candidate_id"),
-            {"job_id": job_id, "candidate_id": candidate_id, "status": status, "replied_message": replied_message}
-        )
-    else:
-        db.execute(
-            text("UPDATE job_candidates SET recruitment_status = :status, updated_at = now() WHERE job_id = :job_id AND candidate_id = :candidate_id"),
-            {"job_id": job_id, "candidate_id": candidate_id, "status": status}
-        )
+def update_candidate_status(db: Session, job_id: UUID, candidate_id: UUID, status: str, target_phone: str | None = None):
+    db.execute(
+        text("UPDATE job_candidates SET recruitment_status = :status, updated_at = now() WHERE job_id = :job_id AND candidate_id = :candidate_id"),
+        {"job_id": job_id, "candidate_id": candidate_id, "status": status}
+    )
     db.commit()
     
     if status.upper() == 'CONTACTED':

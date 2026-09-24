@@ -65,12 +65,6 @@ export default function Outreach() {
                   <div>
                     <h3 className="text-xl font-bold text-white mb-1">{candidate.name}</h3>
                     <p className="text-sm text-slate-400">{candidate.job}</p>
-                    {candidate.replied_message && (
-                      <div className="mt-3 bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
-                        <p className="text-xs text-slate-500 mb-1 uppercase tracking-wider font-semibold">Reply</p>
-                        <p className="text-sm text-slate-300 italic">"{candidate.replied_message}"</p>
-                      </div>
-                    )}
                   </div>
 
                   <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto shrink-0">
