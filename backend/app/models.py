@@ -258,6 +258,7 @@ class JobCandidate(Base):
     source_id: Mapped[UUID | None] = mapped_column(ForeignKey("candidate_sources.id", ondelete="SET NULL"))
     eligibility_status: Mapped[str] = mapped_column(String(50), default="PENDING")
     recruitment_status: Mapped[str] = mapped_column(String(50), default="NEW")
+    replied_message: Mapped[str | None] = mapped_column(Text)
     overall_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
     classification: Mapped[str | None] = mapped_column(String(50))
     is_shortlisted: Mapped[bool] = mapped_column(Boolean, default=False)

@@ -1826,12 +1826,15 @@ def _send_whatsapp_to_candidate(db: Session, candidate_id: UUID, target_phone: s
             
             payload = {
                 "to": clean_phone,
-                "type": "text",
-                "text": {
-                        "body": "Hi"
-            },
+                "type": "template",
+                "template": {
+                    "name": "hello_world",
+                    "language": {
+                        "code": "en_US"
+                    }
+                },
                 "referenceId": f"NMHireX-{str(candidate_id)[:8]}",
-                "callbackUrl": "https://webhook.site/0f0c589e-61fc-4b86-8f30-c1dbd6f5d19d"
+                "callbackUrl": f"{getattr(settings, 'WEBHOOK_BASE_URL', 'http://localhost:8000')}/api/webhook/whatsapp"
             }
             
             print(f"Sending WhatsApp payload to {clean_phone}...")
@@ -1853,6 +1856,41 @@ def _send_whatsapp_to_candidate(db: Session, candidate_id: UUID, target_phone: s
             print("Phone number is invalid or empty after cleaning.")
     except Exception as e:
         print(f"Error in WhatsApp integration: {e}")
+
+def _send_whatsapp_text_message(raw_phone: str, text_message: str):
+    try:
+        if getattr(settings, "WHATSAPP_STAGE_NUMBER", "") and getattr(settings, "HIRE_X_DEV_STAGE", "development") != "production":
+            raw_phone = settings.WHATSAPP_STAGE_NUMBER
+        if not raw_phone:
+            return
+        
+        clean_phone = ''.join(filter(str.isdigit, str(raw_phone)))
+        if clean_phone:
+            if len(clean_phone) == 10:
+                clean_phone = "91" + clean_phone
+                
+            url = "https://nmve.io/whatsapp/api/integrations/whatsapp/messages"
+            headers = {
+                "Content-Type": "application/json"
+            }
+            if getattr(settings, "WHATSAPP_API_KEY", ""):
+                headers["Authorization"] = f"Bearer {settings.WHATSAPP_API_KEY}"
+                headers["api-key"] = settings.WHATSAPP_API_KEY
+                
+            payload = {
+                "to": clean_phone,
+                "type": "text",
+                "text": {
+                    "body": text_message
+                }
+            }
+            
+            data = json.dumps(payload).encode('utf-8')
+            req = urllib.request.Request(url, data=data, headers=headers, method='POST')
+            with urllib.request.urlopen(req) as response:
+                print(f"Reply sent to {clean_phone}, status: {response.status}")
+    except Exception as e:
+        print(f"Error sending WhatsApp reply: {e}")
 
 def mark_candidate_contacted(db: Session, job_id: UUID, candidate_id: UUID, target_phone: str | None = None):
     update_candidate_status(db, job_id, candidate_id, 'CONTACTED', target_phone)
@@ -1877,15 +1915,22 @@ def get_outreach_candidates(db: Session, user_id: UUID) -> list[dict]:
             "job_candidate_id": str(jc.id),
             "name": candidate.name or "Unnamed Candidate",
             "job": job.title or "Unknown Role",
-            "status": jc.recruitment_status
+            "status": jc.recruitment_status,
+            "replied_message": jc.replied_message
         })
     return results
 
-def update_candidate_status(db: Session, job_id: UUID, candidate_id: UUID, status: str, target_phone: str | None = None):
-    db.execute(
-        text("UPDATE job_candidates SET recruitment_status = :status, updated_at = now() WHERE job_id = :job_id AND candidate_id = :candidate_id"),
-        {"job_id": job_id, "candidate_id": candidate_id, "status": status}
-    )
+def update_candidate_status(db: Session, job_id: UUID, candidate_id: UUID, status: str, target_phone: str | None = None, replied_message: str | None = None):
+    if replied_message is not None:
+        db.execute(
+            text("UPDATE job_candidates SET recruitment_status = :status, replied_message = :replied_message, updated_at = now() WHERE job_id = :job_id AND candidate_id = :candidate_id"),
+            {"job_id": job_id, "candidate_id": candidate_id, "status": status, "replied_message": replied_message}
+        )
+    else:
+        db.execute(
+            text("UPDATE job_candidates SET recruitment_status = :status, updated_at = now() WHERE job_id = :job_id AND candidate_id = :candidate_id"),
+            {"job_id": job_id, "candidate_id": candidate_id, "status": status}
+        )
     db.commit()
     
     if status.upper() == 'CONTACTED':
