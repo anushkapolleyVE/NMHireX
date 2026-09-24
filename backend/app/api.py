@@ -740,7 +740,7 @@ Recruiter approval:
     Admin must approve them before they can log in.
 """
 
-from NMHireX.backend.app import database
+
 from .auth import require_admin
 from pathlib import Path
 from uuid import UUID
