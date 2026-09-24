@@ -1912,6 +1912,43 @@ def _send_whatsapp_to_candidate(
         print(f"Error in WhatsApp integration: {e}")
 
 
+def _send_whatsapp_text_message(raw_phone: str, text_message: str):
+    """Send a plain text WhatsApp message to a phone number."""
+    try:
+        import urllib.request
+        import json
+
+        if not raw_phone:
+            return
+
+        clean_phone = ''.join(filter(str.isdigit, str(raw_phone)))
+        if len(clean_phone) == 10:
+            clean_phone = "91" + clean_phone
+
+        if not clean_phone:
+            return
+
+        url = "https://nmve.io/whatsapp/api/integrations/whatsapp/messages"
+        headers = {"Content-Type": "application/json"}
+        if getattr(settings, "WHATSAPP_API_KEY", ""):
+            headers["Authorization"] = f"Bearer {settings.WHATSAPP_API_KEY}"
+            headers["api-key"] = settings.WHATSAPP_API_KEY
+
+        payload = {
+            "to": clean_phone,
+            "type": "text",
+            "text": {"body": text_message}
+        }
+
+        data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(url, data=data, headers=headers, method='POST')
+        with urllib.request.urlopen(req) as response:
+            print(f"WhatsApp reply sent to {clean_phone}, status: {response.status}")
+
+    except Exception as e:
+        print(f"Error sending WhatsApp reply: {e}")
+
+
 def mark_candidate_contacted(
     db: Session,
     job_id: UUID,

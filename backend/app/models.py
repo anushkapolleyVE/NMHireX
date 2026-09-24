@@ -345,6 +345,7 @@ class CandidateContact(Base):
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     responded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     response_text: Mapped[str | None] = mapped_column(Text)
+    response_intent: Mapped[str | None] = mapped_column(String(50))  # POSITIVE | NEGATIVE | NEUTRAL
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
 # ============================================================
