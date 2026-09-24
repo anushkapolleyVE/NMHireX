@@ -740,6 +740,7 @@ Recruiter approval:
     Admin must approve them before they can log in.
 """
 
+from NMHireX.backend.app import database
 from .auth import require_admin
 from pathlib import Path
 from uuid import UUID
@@ -1613,11 +1614,19 @@ async def whatsapp_webhook(
             }
 
         # Get candidate's reply
-        response_text = (
-            data.get("text", {}).get("body")
-            if isinstance(data.get("text"), dict)
-            else data.get("text")
-        )
+        response_text = None
+
+        if isinstance(data.get("text"), dict):
+            response_text = data["text"].get("body")
+
+        if not response_text:
+            response_text = data.get("body")
+
+        if not response_text:
+            response_text = payload.get("text")
+
+        if not response_text:
+            response_text = payload.get("body")
 
         reference_id = data.get("referenceId")
         message_id = data.get("messageId")
