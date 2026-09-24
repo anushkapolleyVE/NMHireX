@@ -67,18 +67,18 @@ export default function SyncResumeModal({ isOpen, onClose }) {
         <div className="p-6 sm:p-8">
           <h2 className="text-2xl font-bold text-white mb-2">Sync resume pool</h2>
           <p className="text-sm text-slate-400 mb-6">Enter the folder to scan for resumes.</p>
-          
+
           <div className="space-y-4">
             <p className="text-sm font-semibold text-slate-300">Source</p>
-            
+
             <label className={`flex items-start gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${source === 'local' ? 'border-brand bg-brand/10' : 'border-slate-700 bg-slate-800/50 hover:border-slate-600'}`}>
-              <input 
-                type="radio" 
-                name="source" 
-                value="local" 
-                className="mt-1" 
-                checked={source === 'local'} 
-                onChange={() => setSource('local')} 
+              <input
+                type="radio"
+                name="source"
+                value="local"
+                className="mt-1"
+                checked={source === 'local'}
+                onChange={() => setSource('local')}
               />
               <div className="flex-1">
                 <div className="flex justify-between items-center mb-1">
@@ -90,13 +90,13 @@ export default function SyncResumeModal({ isOpen, onClose }) {
             </label>
 
             <label className={`flex items-start gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${source === 'gdrive' ? 'border-brand bg-brand/10' : 'border-slate-700 bg-slate-800/50 hover:border-slate-600'}`}>
-              <input 
-                type="radio" 
-                name="source" 
-                value="gdrive" 
-                className="mt-1" 
-                checked={source === 'gdrive'} 
-                onChange={() => setSource('gdrive')} 
+              <input
+                type="radio"
+                name="source"
+                value="gdrive"
+                className="mt-1"
+                checked={source === 'gdrive'}
+                onChange={() => setSource('gdrive')}
               />
               <div className="flex-1">
                 <div className="flex justify-between items-center mb-1">
@@ -108,12 +108,12 @@ export default function SyncResumeModal({ isOpen, onClose }) {
             </label>
 
             <label className={`flex items-start gap-4 p-4 rounded-xl border-2 cursor-not-allowed border-slate-800 bg-slate-900/50 opacity-60`}>
-              <input 
-                type="radio" 
-                name="source" 
-                value="indeed" 
-                className="mt-1" 
-                disabled 
+              <input
+                type="radio"
+                name="source"
+                value="indeed"
+                className="mt-1"
+                disabled
               />
               <div className="flex-1">
                 <div className="flex justify-between items-center mb-1">
@@ -129,8 +129,8 @@ export default function SyncResumeModal({ isOpen, onClose }) {
             {source === 'local' && (
               <>
                 <p className="text-sm font-semibold text-slate-300 mb-2">Local folder path</p>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={localPath}
                   onChange={(e) => setLocalPath(e.target.value)}
                   placeholder="C:\Users\...\resumes"
@@ -138,12 +138,12 @@ export default function SyncResumeModal({ isOpen, onClose }) {
                 />
               </>
             )}
-            
+
             {source === 'gdrive' && (
               <>
                 <p className="text-sm font-semibold text-slate-300 mb-2">Google Drive Folder / ZIP Link</p>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={gdriveUrl}
                   onChange={(e) => setGdriveUrl(e.target.value)}
                   placeholder="https://drive.google.com/drive/folders/..."
@@ -168,14 +168,14 @@ export default function SyncResumeModal({ isOpen, onClose }) {
           )}
 
           <div className="mt-8 flex justify-end gap-3">
-            <button 
+            <button
               onClick={onClose}
               disabled={isSyncing}
               className="rounded-xl px-5 py-3 text-sm font-bold text-slate-300 hover:bg-slate-800 hover:text-white transition-all disabled:opacity-50"
             >
               {syncResult ? 'Close' : 'Cancel'}
             </button>
-            <button 
+            <button
               onClick={handleSync}
               disabled={isSyncing || syncResult?.status === 'SUCCESS'}
               className="rounded-xl bg-brand px-6 py-3 text-sm font-bold text-white hover:bg-brand-light shadow-[0_0_15px_rgba(59,130,246,0.3)] transition-all disabled:opacity-50 flex items-center gap-2"

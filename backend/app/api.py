@@ -774,6 +774,7 @@ from .tool_functions import (
     mark_candidate_contacted,
     get_all_candidates,
     get_outreach_candidates, update_candidate_status,
+    _send_whatsapp_text_message,
 )
 
 from .config import settings
@@ -1605,6 +1606,7 @@ async def whatsapp_webhook(
 class StatusUpdateRequest(BaseModel):
     status: str
     target_phone: str | None = None
+    replied_message: str | None = None
 
 @router.post("/user/jobs/{job_id}/candidates/{candidate_id}/status")
 def api_update_candidate_status(
@@ -1617,5 +1619,75 @@ def api_update_candidate_status(
     if user.role == "RECRUITER" and user.status != "APPROVED":
         raise HTTPException(status_code=403, detail="Recruiter account is not approved")
         
-    update_candidate_status(db, job_id, candidate_id, req.status, req.target_phone)
+    update_candidate_status(db, job_id, candidate_id, req.status, req.target_phone, req.replied_message)
     return {"message": "Status updated successfully"}
+
+@router.post("/webhook/whatsapp")
+async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
+    try:
+        payload = await request.json()
+    except Exception:
+        return {"status": "error", "message": "Invalid JSON"}
+
+    print("Received WhatsApp Webhook:", payload)
+    
+    reference_id = payload.get("referenceId")
+    message_text = None
+    
+    if "entry" in payload:
+        try:
+            message_text = payload["entry"][0]["changes"][0]["value"]["messages"][0]["text"]["body"]
+        except (KeyError, IndexError):
+            pass
+            
+    if not message_text:
+        if isinstance(payload.get("text"), dict):
+            message_text = payload["text"].get("body")
+        elif isinstance(payload.get("text"), str):
+            message_text = payload["text"]
+        elif isinstance(payload.get("message"), str):
+            message_text = payload["message"]
+            
+    if not message_text and "reply" in payload:
+        message_text = payload["reply"]
+        
+    if not message_text:
+        message_text = str(payload)
+
+    if reference_id and reference_id.startswith("NMHireX-"):
+        short_id = reference_id.replace("NMHireX-", "")
+        
+        # We need to find the job_candidate that matches this candidate_id prefix.
+        from sqlalchemy import text
+        
+        # Determine status. If they said no, maybe NOT_INTERESTED. But for now, we just want to save the reply and mark INTERESTED if positive. 
+        # A simple keyword check for now, or just leave status as CONTACTED but with a reply.
+        # Let's just update the replied_message for the candidate's active job applications.
+        
+        lower_msg = message_text.lower()
+        new_status = "INTERESTED"
+        reply_msg_text = "Here is your interview link: https://teams.microsoft.com/l/meetup-join/19%3ameeting_MzliMWJk..."
+        
+        if "no" in lower_msg or "not" in lower_msg or "stop" in lower_msg:
+            new_status = "NOT_INTERESTED"
+            reply_msg_text = "Thank you for your response."
+            
+        db.execute(
+            text("""
+                UPDATE job_candidates 
+                SET replied_message = :msg, recruitment_status = :status, updated_at = now() 
+                WHERE candidate_id::text LIKE :short_id
+            """),
+            {"msg": message_text, "status": new_status, "short_id": f"{short_id}%"}
+        )
+        db.commit()
+        
+        candidate = db.execute(
+            text("SELECT phone FROM candidates WHERE id::text LIKE :short_id LIMIT 1"),
+            {"short_id": f"{short_id}%"}
+        ).fetchone()
+        
+        if candidate and candidate[0]:
+            _send_whatsapp_text_message(candidate[0], reply_msg_text)
+        
+    return {"status": "success"}
