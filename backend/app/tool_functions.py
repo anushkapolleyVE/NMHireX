@@ -2039,6 +2039,70 @@ def _send_whatsapp_text_message(raw_phone: str, text_message: str):
     except Exception as e:
         print(f"Error sending WhatsApp reply: {e}")
 
+def _send_whatsapp_flow_message(raw_phone: str, job_candidate_id: str):
+    """Send a WhatsApp Flow interactive message for interview scheduling."""
+    try:
+        import urllib.request
+        import json
+
+        if not raw_phone:
+            return
+
+        clean_phone = ''.join(filter(str.isdigit, str(raw_phone)))
+        if len(clean_phone) == 10:
+            clean_phone = "91" + clean_phone
+
+        if not clean_phone:
+            return
+
+        url = "https://nmve.io/whatsapp/api/integrations/whatsapp/messages"
+        headers = {"Content-Type": "application/json"}
+        if getattr(settings, "WHATSAPP_API_KEY", ""):
+            headers["Authorization"] = f"Bearer {settings.WHATSAPP_API_KEY}"
+            headers["api-key"] = settings.WHATSAPP_API_KEY
+
+        # Assuming the flow ID is configured or needs to be replaced by the user
+        flow_id = getattr(settings, "WHATSAPP_FLOW_ID", "<YOUR_FLOW_ID>")
+
+        payload = {
+            "to": clean_phone,
+            "type": "interactive",
+            "interactive": {
+                "type": "flow",
+                "header": {
+                    "type": "text",
+                    "text": "Great news! 🎉"
+                },
+                "body": {
+                    "text": "Please schedule your interview at a convenient date and time within the next 7 days.\n\nTap the button below to select your preferred date and time.\n\nWe look forward to connecting with you! 😊"
+                },
+                "action": {
+                    "name": "flow",
+                    "parameters": {
+                        "flow_message_version": "3",
+                        "flow_token": f"SCHED_{job_candidate_id}",
+                        "flow_id": flow_id,
+                        "flow_cta": "📅 Select Date & Time",
+                        "flow_action": "navigate",
+                        "flow_action_payload": {
+                            "screen": "DATE_SELECTION",
+                            "data": {
+                                "job_candidate_id": str(job_candidate_id)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(url, data=data, headers=headers, method='POST')
+        with urllib.request.urlopen(req) as response:
+            print(f"WhatsApp Flow message sent to {clean_phone}, status: {response.status}")
+
+    except Exception as e:
+        print(f"Error sending WhatsApp Flow: {e}")
+
 
 def mark_candidate_contacted(
     db: Session,
