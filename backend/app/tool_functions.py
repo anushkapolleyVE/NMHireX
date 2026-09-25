@@ -2039,11 +2039,12 @@ def _send_whatsapp_text_message(raw_phone: str, text_message: str):
     except Exception as e:
         print(f"Error sending WhatsApp reply: {e}")
 
-def _send_whatsapp_flow_message(raw_phone: str, job_candidate_id: str):
-    """Send a WhatsApp Flow interactive message for interview scheduling."""
+def _send_whatsapp_cta_message(raw_phone: str, job_candidate_id: str):
+    """Send a WhatsApp CTA URL interactive message for interview scheduling."""
     try:
         import urllib.request
         import json
+        import os
 
         if not raw_phone:
             return
@@ -2061,14 +2062,15 @@ def _send_whatsapp_flow_message(raw_phone: str, job_candidate_id: str):
             headers["Authorization"] = f"Bearer {settings.WHATSAPP_API_KEY}"
             headers["api-key"] = settings.WHATSAPP_API_KEY
 
-        # Assuming the flow ID is configured or needs to be replaced by the user
-        flow_id = getattr(settings, "WHATSAPP_FLOW_ID", "<YOUR_FLOW_ID>")
+        # Fallback to localhost if FRONTEND_URL is not set in env
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+        scheduling_link = f"{frontend_url}/schedule/{job_candidate_id}"
 
         payload = {
             "to": clean_phone,
             "type": "interactive",
             "interactive": {
-                "type": "flow",
+                "type": "cta_url",
                 "header": {
                     "type": "text",
                     "text": "Great news! 🎉"
@@ -2077,19 +2079,10 @@ def _send_whatsapp_flow_message(raw_phone: str, job_candidate_id: str):
                     "text": "Please schedule your interview at a convenient date and time within the next 7 days.\n\nTap the button below to select your preferred date and time.\n\nWe look forward to connecting with you! 😊"
                 },
                 "action": {
-                    "name": "flow",
+                    "name": "cta_url",
                     "parameters": {
-                        "flow_message_version": "3",
-                        "flow_token": f"SCHED_{job_candidate_id}",
-                        "flow_id": flow_id,
-                        "flow_cta": "📅 Select Date & Time",
-                        "flow_action": "navigate",
-                        "flow_action_payload": {
-                            "screen": "DATE_SELECTION",
-                            "data": {
-                                "job_candidate_id": str(job_candidate_id)
-                            }
-                        }
+                        "display_text": "📅 Select Date & Time",
+                        "url": scheduling_link
                     }
                 }
             }
@@ -2098,10 +2091,10 @@ def _send_whatsapp_flow_message(raw_phone: str, job_candidate_id: str):
         data = json.dumps(payload).encode('utf-8')
         req = urllib.request.Request(url, data=data, headers=headers, method='POST')
         with urllib.request.urlopen(req) as response:
-            print(f"WhatsApp Flow message sent to {clean_phone}, status: {response.status}")
+            print(f"WhatsApp CTA message sent to {clean_phone}, status: {response.status}")
 
     except Exception as e:
-        print(f"Error sending WhatsApp Flow: {e}")
+        print(f"Error sending WhatsApp CTA: {e}")
 
 
 def mark_candidate_contacted(

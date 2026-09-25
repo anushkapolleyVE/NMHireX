@@ -1804,7 +1804,7 @@ async def whatsapp_webhook(
 
         if job_candidate_rec:
             from sqlalchemy import text as sql_text
-            from .tool_functions import _send_whatsapp_text_message, _send_whatsapp_flow_message
+            from .tool_functions import _send_whatsapp_text_message, _send_whatsapp_cta_message
 
             current_status = job_candidate_rec.recruitment_status
 
@@ -1823,7 +1823,7 @@ async def whatsapp_webhook(
                     f"Tap the button below to select your preferred date and time.\n\n"
                     f"We look forward to connecting with you! 😊"
                 )
-                _send_whatsapp_flow_message(candidate.phone, str(job_candidate_rec.id))
+                _send_whatsapp_cta_message(candidate.phone, str(job_candidate_rec.id))
 
                 # Save the outbound calendar message in candidate_contacts
                 outbound_cal = CandidateContact(
@@ -1837,7 +1837,7 @@ async def whatsapp_webhook(
                 )
                 db.add(outbound_cal)
                 db.commit()
-                print(f"Sent WhatsApp Flow interview scheduling message to {candidate.name}")
+                print(f"Sent WhatsApp CTA interview scheduling message to {candidate.name}")
 
 
             elif current_status == "INTERESTED":
