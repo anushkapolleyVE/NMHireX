@@ -933,9 +933,6 @@ export default function MatchAgent() {
                 </div>
                 <h3 className="text-xl font-bold text-white mb-2 flex items-center justify-center gap-2">
                   Loading candidates... {screeningProgress}%
-                  <span className="text-sm font-medium text-slate-400 font-mono bg-slate-800/80 px-2 py-1 rounded-md border border-slate-700">
-                    {formatScreeningTime(screeningTime)}
-                  </span>
                 </h3>
                 <div className="w-64 max-w-full bg-slate-800 rounded-full h-1.5 mt-2">
                   <div className="bg-brand h-1.5 rounded-full transition-all duration-300" style={{ width: `${screeningProgress}%` }}></div>
@@ -1436,9 +1433,6 @@ export default function MatchAgent() {
                           <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" fill="currentColor" className="opacity-75" />
                         </svg>
                         Screening candidates… {screeningProgress}%
-                        <span className="text-xs font-mono bg-indigo-800/50 px-2 py-0.5 rounded ml-1">
-                          {formatScreeningTime(screeningTime)}
-                        </span>
                       </>
                     ) : (
                       <>
@@ -1623,9 +1617,6 @@ export default function MatchAgent() {
 
                   <p className="mt-4 text-base font-bold text-white flex items-center justify-center gap-3">
                     Screening candidates… {screeningProgress}%
-                    <span className="text-sm font-medium text-slate-400 font-mono bg-slate-800/80 px-2.5 py-1 rounded-md border border-slate-700">
-                      {formatScreeningTime(screeningTime)}
-                    </span>
                   </p>
 
                   <div className="w-full max-w-xs mx-auto bg-slate-800 rounded-full h-2 mt-4">
