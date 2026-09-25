@@ -339,6 +339,24 @@ export default function MatchAgent() {
     useState(false);
 
   const [screeningProgress, setScreeningProgress] = useState(0);
+  const [screeningTime, setScreeningTime] = useState(0);
+
+  useEffect(() => {
+    let timer;
+    if (isSearching) {
+      setScreeningTime(0);
+      timer = setInterval(() => {
+        setScreeningTime((prev) => prev + 1);
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [isSearching]);
+
+  const formatScreeningTime = (seconds) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
 
   const [searchComplete, setSearchComplete] =
     useState(false);
@@ -559,7 +577,10 @@ export default function MatchAgent() {
     setStatus("Loading candidates");
 
     const progressInterval = setInterval(() => {
-      setScreeningProgress((prev) => (prev >= 95 ? prev : prev + 15));
+      setScreeningProgress((prev) => {
+        if (prev >= 95) return 95;
+        return Math.min(95, prev + 15);
+      });
     }, 200);
 
     try {
@@ -916,7 +937,12 @@ export default function MatchAgent() {
                   <div className="absolute inset-0 rounded-full border-4 border-slate-800"></div>
                   <div className="absolute inset-0 rounded-full border-4 border-brand border-t-transparent animate-spin"></div>
                 </div>
-                <h3 className="text-xl font-bold text-white mb-2">Loading candidates... {screeningProgress}%</h3>
+                <h3 className="text-xl font-bold text-white mb-2 flex items-center justify-center gap-2">
+                  Loading candidates... {screeningProgress}%
+                  <span className="text-sm font-medium text-slate-400 font-mono bg-slate-800/80 px-2 py-1 rounded-md border border-slate-700">
+                    {formatScreeningTime(screeningTime)}
+                  </span>
+                </h3>
                 <div className="w-64 max-w-full bg-slate-800 rounded-full h-1.5 mt-2">
                   <div className="bg-brand h-1.5 rounded-full transition-all duration-300" style={{ width: `${screeningProgress}%` }}></div>
                 </div>
@@ -1400,6 +1426,9 @@ export default function MatchAgent() {
                           <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" fill="currentColor" className="opacity-75" />
                         </svg>
                         Screening candidates… {screeningProgress}%
+                        <span className="text-xs font-mono bg-indigo-800/50 px-2 py-0.5 rounded ml-1">
+                          {formatScreeningTime(screeningTime)}
+                        </span>
                       </>
                     ) : (
                       <>
@@ -1564,8 +1593,11 @@ export default function MatchAgent() {
                   </div>
 
 
-                  <p className="mt-4 text-base font-bold text-white">
+                  <p className="mt-4 text-base font-bold text-white flex items-center justify-center gap-3">
                     Screening candidates… {screeningProgress}%
+                    <span className="text-sm font-medium text-slate-400 font-mono bg-slate-800/80 px-2.5 py-1 rounded-md border border-slate-700">
+                      {formatScreeningTime(screeningTime)}
+                    </span>
                   </p>
 
                   <div className="w-full max-w-xs mx-auto bg-slate-800 rounded-full h-2 mt-4">
@@ -1615,7 +1647,10 @@ export default function MatchAgent() {
                         <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                       </div>
                       <h3 className="text-xl font-bold text-white mb-2">Screening Complete</h3>
-                      <p className="text-slate-400 mb-6">Successfully screened and ranked {candidates.length} candidates against your criteria.</p>
+                      <p className="text-slate-400 mb-2">Successfully screened and ranked {candidates.length} candidates against your criteria.</p>
+                      <p className="text-sm font-medium text-slate-500 mb-6 bg-slate-800/50 px-3 py-1.5 rounded-lg border border-slate-700/50 inline-block">
+                        Total time taken: <span className="text-white font-mono">{formatScreeningTime(screeningTime)}</span>
+                      </p>
                       
                       <button 
                         onClick={() => setCandidatesModalOpen(true)}

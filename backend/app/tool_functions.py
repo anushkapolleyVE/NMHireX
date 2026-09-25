@@ -1701,6 +1701,17 @@ def get_job_candidates(db: Session, job_id: UUID, limit: int = 10) -> list[dict]
         .order_by(JobCandidate.ranking_position)
     ).all()
 
+    # Bulk fetch resumes to avoid N+1 query problem
+    candidate_ids = [candidate.id for jc, candidate, screening in rows[:limit]]
+    resumes = {}
+    if candidate_ids:
+        all_resumes = db.execute(
+            select(Resume).where(Resume.candidate_id.in_(candidate_ids)).order_by(Resume.uploaded_at.desc())
+        ).scalars().all()
+        for r in all_resumes:
+            if r.candidate_id not in resumes:
+                resumes[r.candidate_id] = r
+
     results = []
 
     for jc, candidate, screening in rows[:limit]:
@@ -1765,7 +1776,7 @@ def get_job_candidates(db: Session, job_id: UUID, limit: int = 10) -> list[dict]
         if screening.matching_details:
             reasoning = screening.matching_details.get("evaluation")
 
-        resume = db.execute(select(Resume).where(Resume.candidate_id == candidate.id).order_by(Resume.uploaded_at.desc())).scalars().first()
+        resume = resumes.get(candidate.id)
         resume_url = resume.file_url if resume else None
 
         results.append({
@@ -1844,6 +1855,29 @@ def get_user_dashboard(db: Session, user_id: UUID) -> dict:
     jobs = db.scalars(select(Job).where(Job.created_by == user_id).order_by(Job.created_at.desc())).all()
     active_jobs = len(jobs)
     
+    job_ids = [j.id for j in jobs]
+    
+    # Bulk fetch requirements to avoid N+1 queries
+    reqs = {}
+    if job_ids:
+        job_reqs = db.execute(select(JobRequirement).where(JobRequirement.job_id.in_(job_ids))).scalars().all()
+        for r in job_reqs:
+            reqs[r.job_id] = r
+            
+    screened_data = {}
+    if job_ids:
+        rows = db.execute(
+            select(JobCandidate.job_id, ScreeningResult.total_score)
+            .join(ScreeningResult, ScreeningResult.job_candidate_id == JobCandidate.id, isouter=True)
+            .where(JobCandidate.job_id.in_(job_ids), JobCandidate.is_shortlisted == True)
+        ).all()
+        for j_id, score in rows:
+            if j_id not in screened_data:
+                screened_data[j_id] = {"screened": 0, "strong": 0}
+            screened_data[j_id]["screened"] += 1
+            if score and float(score) >= 80:
+                screened_data[j_id]["strong"] += 1
+
     total_screened = 0
     strong_matches = 0
     whatsapp_outreach = 0
@@ -1851,17 +1885,18 @@ def get_user_dashboard(db: Session, user_id: UUID) -> dict:
     pipeline = []
     
     for j in jobs:
-        candidates = get_job_candidates(db, j.id)
-        screened_count = len(candidates)
-        total_screened += screened_count
+        s_data = screened_data.get(j.id, {"screened": 0, "strong": 0})
+        screened_count = s_data["screened"]
+        strong_count = s_data["strong"]
         
-        strong_count = sum(1 for c in candidates if c.get("score", 0) >= 80)
+        total_screened += screened_count
         strong_matches += strong_count
         
+        j_req = reqs.get(j.id)
         exp_str = "N/A"
-        if j.requirements:
-            min_exp = j.requirements.minimum_experience
-            max_exp = j.requirements.maximum_experience
+        if j_req:
+            min_exp = j_req.minimum_experience
+            max_exp = j_req.maximum_experience
             if min_exp and max_exp: 
                 exp_str = f"{int(min_exp)}-{int(max_exp)} yrs"
             elif min_exp: 
