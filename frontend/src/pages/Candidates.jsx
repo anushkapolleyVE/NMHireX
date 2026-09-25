@@ -1,8 +1,24 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { getAllCandidates } from '../utils/api';
 import Header from '../components/Header';
 import SyncCandidatesModal from '../components/SyncCandidatesModal';
 import ProfileModal from '../components/ProfileModal';
+
+const formatScheduledTime = (isoStr) => {
+  if (!isoStr) return null;
+  try {
+    const d = new Date(isoStr);
+    const date = d.toLocaleDateString('en-IN', {
+      weekday: 'short', day: '2-digit', month: 'short', year: 'numeric',
+    });
+    const time = d.toLocaleTimeString('en-IN', {
+      hour: '2-digit', minute: '2-digit', hour12: true,
+    });
+    return { date, time };
+  } catch {
+    return null;
+  }
+};
 
 export default function Candidates() {
   const [search, setSearch] = useState('');
@@ -16,10 +32,14 @@ export default function Candidates() {
     const fetchCandidates = async () => {
       try {
         const data = await getAllCandidates();
-        const enrichedData = data.map(c => ({
-          ...c,
-          searchStr: `${c.name} ${c.job || ''} ${c.skills || ''}`.toLowerCase()
-        }));
+        const enrichedData = data.map(c => {
+          const scheduled = formatScheduledTime(c.interview_scheduled_at);
+          const dateStr = scheduled ? `${scheduled.date} ${scheduled.time}` : '';
+          return {
+            ...c,
+            searchStr: `${c.name} ${c.job || ''} ${c.skills || ''} ${dateStr}`.toLowerCase()
+          };
+        });
         setCandidates(enrichedData);
       } catch (err) {
         console.error('Failed to fetch candidates', err);
@@ -47,22 +67,6 @@ export default function Candidates() {
 
   const handleOpenMeetingLink = (interviewLink) => {
     window.open(interviewLink || FALLBACK_TEAMS_LINK, '_blank');
-  };
-
-  const formatScheduledTime = (isoStr) => {
-    if (!isoStr) return null;
-    try {
-      const d = new Date(isoStr);
-      const date = d.toLocaleDateString('en-IN', {
-        weekday: 'short', day: '2-digit', month: 'short', year: 'numeric',
-      });
-      const time = d.toLocaleTimeString('en-IN', {
-        hour: '2-digit', minute: '2-digit', hour12: true,
-      });
-      return { date, time };
-    } catch {
-      return null;
-    }
   };
 
   return (
@@ -118,7 +122,7 @@ export default function Candidates() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
               <input className="input-dark w-full rounded-xl pl-10 pr-4 py-4 text-sm placeholder:text-slate-500"
-                placeholder="Search candidates by name or skill..."
+                placeholder="Search candidates by name, skill, or date..."
                 value={search} onChange={(e) => setSearch(e.target.value)}
               />
             </div>
