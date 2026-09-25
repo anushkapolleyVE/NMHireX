@@ -2081,7 +2081,7 @@ def _send_whatsapp_cta_message(raw_phone: str, job_candidate_id: str):
                 "action": {
                     "name": "cta_url",
                     "parameters": {
-                        "display_text": "📅 Select Date & Time",
+                        "display_text": "Schedule Now",
                         "url": scheduling_link
                     }
                 }
@@ -2092,6 +2092,22 @@ def _send_whatsapp_cta_message(raw_phone: str, job_candidate_id: str):
         req = urllib.request.Request(url, data=data, headers=headers, method='POST')
         with urllib.request.urlopen(req) as response:
             print(f"WhatsApp CTA message sent to {clean_phone}, status: {response.status}")
+
+    except urllib.error.HTTPError as http_err:
+        error_body = http_err.read().decode('utf-8')
+        print(f"WhatsApp API HTTP Error: {http_err.code}")
+        print(f"Error Details: {error_body}")
+        
+        # Fallback to plain text message if CTA URL is not supported by gateway
+        print("Falling back to plain text message with URL...")
+        fallback_msg = (
+            f"Great news! 🎉 We'd love to move forward with your application.\n\n"
+            f"Please schedule your interview at a convenient date and time within the next 7 days.\n\n"
+            f"Tap the link below to select your preferred date and time:\n"
+            f"👉 {scheduling_link}\n\n"
+            f"We look forward to connecting with you! 😊"
+        )
+        _send_whatsapp_text_message(raw_phone, fallback_msg)
 
     except Exception as e:
         print(f"Error sending WhatsApp CTA: {e}")
