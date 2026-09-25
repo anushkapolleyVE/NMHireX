@@ -1947,10 +1947,13 @@ def _send_whatsapp_to_candidate(
             
             payload = {
                 "to": clean_phone,
-                "type": "text",
-                "text": {
-                        "body": "Hi"
-            },
+                "type": "template",
+  "template": {
+    "name": "hello_world",
+    "language": {
+      "code": "en_US"
+    }
+  },
                 "referenceId": f"NMHireX-{str(candidate_id)[:8]}",
                 "callbackUrl": "https://nmhirex.onrender.com/api/webhooks/whatsapp"
             }
