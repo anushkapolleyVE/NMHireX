@@ -2236,27 +2236,25 @@ def get_all_candidates(db: Session, user_id: UUID) -> list[dict]:
         select(Candidate, JobCandidate)
         .join(JobCandidate, JobCandidate.candidate_id == Candidate.id)
         .where(JobCandidate.recruitment_status.in_(['INTERESTED', 'INTERVIEW_LINK_SENT']))
-        .order_by(Candidate.created_at.desc())
+        .order_by(Candidate.created_at.desc(), JobCandidate.created_at.desc())
     ).all()
     
-    # Extract unique candidates
+    # Extract unique candidates, keeping their valid JobCandidate record
     seen = set()
-    candidates = []
+    valid_pairs = []
     for cand, jc in rows:
         if cand.id not in seen:
-            candidates.append(cand)
+            valid_pairs.append((cand, jc))
             seen.add(cand.id)
     
     results = []
-    for candidate in candidates:
-        # Get their most recent job application (if any) to populate job-specific fields
+    for candidate, active_jc in valid_pairs:
+        # Get the screening result and job for this specific JobCandidate
         jc_row = db.execute(
             select(JobCandidate, Job, ScreeningResult)
             .join(Job, Job.id == JobCandidate.job_id)
             .outerjoin(ScreeningResult, ScreeningResult.job_candidate_id == JobCandidate.id)
-            .where(JobCandidate.candidate_id == candidate.id)
-            .order_by(JobCandidate.created_at.desc())
-            .limit(1)
+            .where(JobCandidate.id == active_jc.id)
         ).first()
         
         score = 0
@@ -2284,19 +2282,16 @@ def get_all_candidates(db: Session, user_id: UUID) -> list[dict]:
                 else:
                     scoreLabel = lbl
 
-        # Find the interview link sent to this candidate – stored directly on job_candidates
-        interview_link = None
-        interview_scheduled_at = None
-        if jc_row:
-            jc_obj = jc_row[0]
-            interview_link = getattr(jc_obj, "interview_link", None)
-            interview_scheduled_at = getattr(jc_obj, "interview_scheduled_at", None)
-            # Fallback: scan outbound messages for a Teams link (legacy data)
-            if not interview_link:
+        # Find the interview link sent to this candidate
+        interview_link = getattr(active_jc, "interview_link", None)
+        interview_scheduled_at = getattr(active_jc, "interview_scheduled_at", None)
+        
+        # Fallback: scan outbound messages for a Teams link (legacy data)
+        if not interview_link:
                 outbound_interview = (
                     db.query(CandidateContact)
                     .filter(
-                        CandidateContact.job_candidate_id == jc_obj.id,
+                        CandidateContact.job_candidate_id == active_jc.id,
                         CandidateContact.channel == "WHATSAPP",
                         CandidateContact.message_type == "OUTBOUND",
                         CandidateContact.message.contains("teams.microsoft.com")
