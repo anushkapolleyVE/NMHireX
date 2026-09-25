@@ -1,7 +1,6 @@
 fastapi
 uvicorn[standard]
 sqlalchemy
-psycopg2-binary
 pydantic-settings
 pypdf
 python-docx
@@ -13,7 +12,7 @@ openai
 
 # Retry/backoff for transient rate-limit / connection errors.
 tenacity
-
+psycopg[binary]
 Pillow
 python-jose[cryptography]
 bcrypt
