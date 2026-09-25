@@ -1074,25 +1074,7 @@ def _get_gdrive_folder_file_map(folder_url: str) -> dict:
     folder_id = match.group(1)
     file_map = {}
 
-    # --- Strategy 1: use gdown's internal _get_directory_structure ---
-    try:
-        from gdown.download_folder import _get_directory_structure  # type: ignore
-        # _get_directory_structure returns a list of GoogleDriveFile objects
-        # with .id and .name attributes
-        files_info = _get_directory_structure(
-            folder_id,
-            use_cookies=False,
-            remaining_ok=True,
-        )
-        for f in (files_info or []):
-            fid = getattr(f, "id", None) or (f.get("id") if isinstance(f, dict) else None)
-            fname = getattr(f, "name", None) or (f.get("name") if isinstance(f, dict) else None)
-            if fid and fname:
-                file_map[fname] = f"https://drive.google.com/file/d/{fid}/view"
-        if file_map:
-            return file_map
-    except Exception as e1:
-        print(f"[WARN] gdown _get_directory_structure failed: {e1}")
+    # --- Strategy 1: Skipped (Incompatible with newer gdown versions) ---
 
     # --- Strategy 2: parse Google Drive folder page HTML for file IDs ---
     try:
