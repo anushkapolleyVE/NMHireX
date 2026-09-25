@@ -12,6 +12,44 @@ import {
   getJobCandidates,
 } from "../utils/api";
 
+/**
+ * Convert any Google Drive URL into a direct, viewable file URL.
+ *
+ * Handles:
+ *  - Already-correct view URLs:  https://drive.google.com/file/d/<id>/view
+ *  - Download URLs:               https://drive.google.com/uc?id=<id>
+ *  - Export URLs:                 https://docs.google.com/.../export?...
+ *  - Folder URLs (fallback):      https://drive.google.com/drive/folders/<id>
+ *    → we cannot resolve a folder to a single file on the frontend;
+ *      the URL is returned as-is so the user can still open the folder.
+ *  - Non-Drive URLs:              returned unchanged.
+ */
+function getResumeViewUrl(url) {
+  if (!url) return null;
+
+  // Already a proper file/view URL — nothing to change
+  const viewMatch = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (viewMatch) {
+    return `https://drive.google.com/file/d/${viewMatch[1]}/view`;
+  }
+
+  // Download / embed URL:  ...uc?id=FILE_ID  or  ...uc?export=download&id=FILE_ID
+  const ucMatch = url.match(/[?&]id=([a-zA-Z0-9_-]{25,})/);
+  if (ucMatch) {
+    return `https://drive.google.com/file/d/${ucMatch[1]}/view`;
+  }
+
+  // Open URL:  /open?id=FILE_ID
+  const openMatch = url.match(/\/open\?id=([a-zA-Z0-9_-]{25,})/);
+  if (openMatch) {
+    return `https://drive.google.com/file/d/${openMatch[1]}/view`;
+  }
+
+  // Folder URL — cannot resolve to individual file here; return as-is
+  // (The backend fix will store per-file URLs on next ingest)
+  return url;
+}
+
 const CRITERIA_WEIGHTS = {
   mandatory_skills: 30,
   experience: 25,
@@ -954,8 +992,9 @@ export default function MatchAgent() {
                           </button>
                           <button 
                             onClick={() => {
-                              if (candidate.resume_url && candidate.resume_url.startsWith('http')) {
-                                window.open(candidate.resume_url, "_blank");
+                              const viewUrl = getResumeViewUrl(candidate.resume_url);
+                              if (viewUrl && viewUrl.startsWith('http')) {
+                                window.open(viewUrl, "_blank");
                               }
                             }} 
                             disabled={!(candidate.resume_url && candidate.resume_url.startsWith('http'))}
