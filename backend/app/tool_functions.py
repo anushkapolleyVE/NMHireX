@@ -841,7 +841,7 @@ def looks_like_job_description(text: str, filename: str) -> bool:
 #     # ingest resume folder 
 # -------------------------------------------
 
-def ingest_resume_folder(db: Session, custom_dir: str | None = None, drive_url: str | None = None) -> dict:
+def ingest_resume_folder(db: Session, custom_dir: str | None = None, drive_url: str | None = None, file_url_map: dict | None = None) -> dict:
     """
     Ingest all resumes from a directory. and ingest every supported CV.
 
@@ -952,10 +952,18 @@ def ingest_resume_folder(db: Session, custom_dir: str | None = None, drive_url: 
             # Store resume
             # -------------------------------------------------
 
+            # Use the per-file URL if available (Google Drive individual file URL),
+            # otherwise fall back to the folder URL.
+            per_file_url = None
+            if file_url_map:
+                per_file_url = file_url_map.get(file_path.name)
+            if not per_file_url:
+                per_file_url = drive_url
+
             candidate_id = store_resume(
                 db=db,
                 path=str(file_path),
-                drive_url=drive_url
+                drive_url=per_file_url
             )
 
             successful += 1
@@ -1045,6 +1053,76 @@ def ingest_resume_folder(db: Session, custom_dir: str | None = None, drive_url: 
         "failed_files": failed_files,
     }
 
+def _get_gdrive_folder_file_map(folder_url: str) -> dict:
+    """
+    Return a mapping of {filename: individual_file_view_url} for all files
+    in a public Google Drive folder.
+
+    Uses gdown's internal folder-listing mechanism (same one it uses when
+    downloading folders) — no Google API key required.
+    Falls back to an empty dict gracefully if listing fails.
+    """
+    import re as _re
+
+    # Extract folder ID from URL like:
+    # https://drive.google.com/drive/folders/<FOLDER_ID>?usp=sharing
+    match = _re.search(r"/folders/([a-zA-Z0-9_-]+)", folder_url)
+    if not match:
+        print("[WARN] Could not extract folder ID from URL:", folder_url)
+        return {}
+
+    folder_id = match.group(1)
+    file_map = {}
+
+    # --- Strategy 1: use gdown's internal _get_directory_structure ---
+    try:
+        from gdown.download_folder import _get_directory_structure  # type: ignore
+        # _get_directory_structure returns a list of GoogleDriveFile objects
+        # with .id and .name attributes
+        files_info = _get_directory_structure(
+            folder_id,
+            use_cookies=False,
+            remaining_ok=True,
+        )
+        for f in (files_info or []):
+            fid = getattr(f, "id", None) or (f.get("id") if isinstance(f, dict) else None)
+            fname = getattr(f, "name", None) or (f.get("name") if isinstance(f, dict) else None)
+            if fid and fname:
+                file_map[fname] = f"https://drive.google.com/file/d/{fid}/view"
+        if file_map:
+            return file_map
+    except Exception as e1:
+        print(f"[WARN] gdown _get_directory_structure failed: {e1}")
+
+    # --- Strategy 2: parse Google Drive folder page HTML for file IDs ---
+    try:
+        import urllib.request as _req
+        import json as _json
+
+        page_url = f"https://drive.google.com/drive/folders/{folder_id}"
+        request = _req.Request(
+            page_url,
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        )
+        with _req.urlopen(request, timeout=15) as resp:
+            html = resp.read().decode("utf-8", errors="replace")
+
+        # Google Drive embeds file metadata as a JSON blob in the HTML.
+        # The pattern looks like: ["filename.pdf","file_id","application/pdf", ...]
+        # We extract all (name, id) pairs for PDF/DOCX files.
+        pattern = _re.compile(
+            r'"([^"]+\.(?:pdf|docx|doc|txt))","([a-zA-Z0-9_-]{25,})"',
+            _re.IGNORECASE,
+        )
+        for name, fid in pattern.findall(html):
+            if name not in file_map:
+                file_map[name] = f"https://drive.google.com/file/d/{fid}/view"
+    except Exception as e2:
+        print(f"[WARN] HTML-parsing fallback failed: {e2}")
+
+    return file_map
+
+
 def sync_google_drive(db: Session, url: str) -> dict:
     """
     Sync resumes from a Google Drive URL.
@@ -1054,8 +1132,18 @@ def sync_google_drive(db: Session, url: str) -> dict:
     
     try:
         if "drive.google.com/drive/folders/" in url:
+            # Fetch per-file URLs BEFORE downloading so we can map
+            # each local filename back to its individual Google Drive URL.
+            file_url_map = _get_gdrive_folder_file_map(url)
+            print(f"[Drive] Resolved {len(file_url_map)} individual file URLs.")
+
             gdown.download_folder(url, output=temp_dir, quiet=False, use_cookies=False)
-            return ingest_resume_folder(db, custom_dir=temp_dir, drive_url=url)
+            return ingest_resume_folder(
+                db,
+                custom_dir=temp_dir,
+                drive_url=url,
+                file_url_map=file_url_map if file_url_map else None,
+            )
         else:
             cwd = os.getcwd()
             try:
