@@ -6,6 +6,7 @@ import MatchAgent from './pages/MatchAgent';
 import Candidates from './pages/Candidates';
 import Outreach from './pages/Outreach';
 import Register from './pages/Register';
+import ScheduleInterview from './pages/ScheduleInterview';
 
 function App() {
   return (
@@ -19,6 +20,7 @@ function App() {
       <Route path="/match-agent" element={<MatchAgent />} />
       <Route path="/candidates" element={<Candidates />} />
       <Route path="/outreach" element={<Outreach />} />
+      <Route path="/schedule/:candidateId" element={<ScheduleInterview />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

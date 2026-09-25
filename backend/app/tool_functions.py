@@ -1074,25 +1074,7 @@ def _get_gdrive_folder_file_map(folder_url: str) -> dict:
     folder_id = match.group(1)
     file_map = {}
 
-    # --- Strategy 1: use gdown's internal _get_directory_structure ---
-    try:
-        from gdown.download_folder import _get_directory_structure  # type: ignore
-        # _get_directory_structure returns a list of GoogleDriveFile objects
-        # with .id and .name attributes
-        files_info = _get_directory_structure(
-            folder_id,
-            use_cookies=False,
-            remaining_ok=True,
-        )
-        for f in (files_info or []):
-            fid = getattr(f, "id", None) or (f.get("id") if isinstance(f, dict) else None)
-            fname = getattr(f, "name", None) or (f.get("name") if isinstance(f, dict) else None)
-            if fid and fname:
-                file_map[fname] = f"https://drive.google.com/file/d/{fid}/view"
-        if file_map:
-            return file_map
-    except Exception as e1:
-        print(f"[WARN] gdown _get_directory_structure failed: {e1}")
+    # --- Strategy 1: Skipped (Incompatible with newer gdown versions) ---
 
     # --- Strategy 2: parse Google Drive folder page HTML for file IDs ---
     try:
@@ -2073,6 +2055,79 @@ def _send_whatsapp_text_message(raw_phone: str, text_message: str):
 
     except Exception as e:
         print(f"Error sending WhatsApp reply: {e}")
+
+def _send_whatsapp_cta_message(raw_phone: str, job_candidate_id: str):
+    """Send a WhatsApp CTA URL interactive message for interview scheduling."""
+    try:
+        import urllib.request
+        import json
+        import os
+
+        if not raw_phone:
+            return
+
+        clean_phone = ''.join(filter(str.isdigit, str(raw_phone)))
+        if len(clean_phone) == 10:
+            clean_phone = "91" + clean_phone
+
+        if not clean_phone:
+            return
+
+        url = "https://nmve.io/whatsapp/api/integrations/whatsapp/messages"
+        headers = {"Content-Type": "application/json"}
+        if getattr(settings, "WHATSAPP_API_KEY", ""):
+            headers["Authorization"] = f"Bearer {settings.WHATSAPP_API_KEY}"
+            headers["api-key"] = settings.WHATSAPP_API_KEY
+
+        # Fallback to localhost if FRONTEND_URL is not set in env
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+        scheduling_link = f"{frontend_url}/schedule/{job_candidate_id}"
+
+        payload = {
+            "to": clean_phone,
+            "type": "interactive",
+            "interactive": {
+                "type": "cta_url",
+                "header": {
+                    "type": "text",
+                    "text": "Great news! 🎉"
+                },
+                "body": {
+                    "text": "Please schedule your interview at a convenient date and time within the next 7 days.\n\nTap the button below to select your preferred date and time.\n\nWe look forward to connecting with you! 😊"
+                },
+                "action": {
+                    "name": "cta_url",
+                    "parameters": {
+                        "display_text": "Schedule Now",
+                        "url": scheduling_link
+                    }
+                }
+            }
+        }
+
+        data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(url, data=data, headers=headers, method='POST')
+        with urllib.request.urlopen(req) as response:
+            print(f"WhatsApp CTA message sent to {clean_phone}, status: {response.status}")
+
+    except urllib.error.HTTPError as http_err:
+        error_body = http_err.read().decode('utf-8')
+        print(f"WhatsApp API HTTP Error: {http_err.code}")
+        print(f"Error Details: {error_body}")
+        
+        # Fallback to plain text message if CTA URL is not supported by gateway
+        print("Falling back to plain text message with URL...")
+        fallback_msg = (
+            f"Great news! 🎉 We'd love to move forward with your application.\n\n"
+            f"Please schedule your interview at a convenient date and time within the next 7 days.\n\n"
+            f"Tap the link below to select your preferred date and time:\n"
+            f"👉 {scheduling_link}\n\n"
+            f"We look forward to connecting with you! 😊"
+        )
+        _send_whatsapp_text_message(raw_phone, fallback_msg)
+
+    except Exception as e:
+        print(f"Error sending WhatsApp CTA: {e}")
 
 
 def mark_candidate_contacted(

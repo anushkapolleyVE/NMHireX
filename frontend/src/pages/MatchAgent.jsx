@@ -1,4 +1,5 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
+
 import { Link, useLocation } from "react-router-dom";
 import Header from "../components/Header";
 import ProfileModal from "../components/ProfileModal";
@@ -358,6 +359,15 @@ export default function MatchAgent() {
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
+  const [jdProgress, setJdProgress] = useState(0);
+
+  // Elapsed-time clock for candidate screening
+  const [screeningElapsed, setScreeningElapsed] = useState(0);
+  const [screeningTook, setScreeningTook] = useState(null); // seconds, saved when done
+  // ref stays in sync with state so async callbacks (handleSearch) can read
+  // the true current value without stale closure issues
+  const screeningElapsedRef = useRef(0);
+
   const [searchComplete, setSearchComplete] =
     useState(false);
 
@@ -400,7 +410,6 @@ export default function MatchAgent() {
   useEffect(() => {
     if (location.state?.jobId && location.state?.autoSearch) {
       setJobId(location.state.jobId);
-      // Wait for state to settle, then search or fetch
       setTimeout(() => {
         if (location.state.isScreened) {
           fetchExistingCandidates(location.state.jobId);
@@ -410,6 +419,20 @@ export default function MatchAgent() {
       }, 100);
     }
   }, [location.state]);
+
+  // Start / stop the elapsed-time clock whenever isSearching changes
+  useEffect(() => {
+    if (isSearching) {
+      screeningElapsedRef.current = 0;
+      setScreeningElapsed(0);
+      const timer = setInterval(() => {
+        screeningElapsedRef.current += 1;
+        setScreeningElapsed(screeningElapsedRef.current);
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [isSearching]);
+
   // ==========================================================
   // FILE CHANGE
   // ==========================================================
@@ -439,11 +462,8 @@ export default function MatchAgent() {
   const handleAnalyze = async () => {
 
     setError("");
-
     setSearchComplete(false);
-
     setCandidates([]);
-
     setRequirements(null);
 
     // --------------------------------------------------------
@@ -451,35 +471,33 @@ export default function MatchAgent() {
     // --------------------------------------------------------
 
     if (!selectedFile && !jdText.trim()) {
-
-      setError(
-        "Please upload a job description or paste the JD text."
-      );
-
+      setError("Please upload a job description or paste the JD text.");
       return;
     }
 
-
     setIsAnalyzing(true);
-
+    setJdProgress(0);
     setStatus("Analyzing");
 
+    // Simulate progress: crawl from 0→88% while the API is in flight
+    const progressInterval = setInterval(() => {
+      setJdProgress((prev) => {
+        if (prev >= 88) return prev;
+        const step = prev < 40 ? 6 : prev < 70 ? 3 : 1;
+        return Math.min(prev + step, 88);
+      });
+    }, 400);
 
     try {
 
       let result;
-
 
       // ------------------------------------------------------
       // FILE
       // ------------------------------------------------------
 
       if (selectedFile) {
-
-        result = await createJob(
-          selectedFile
-        );
-
+        result = await createJob(selectedFile);
       }
 
       // ------------------------------------------------------
@@ -487,39 +505,29 @@ export default function MatchAgent() {
       // ------------------------------------------------------
 
       else {
-
-        result = await createJobFromText(
-          jdText.trim()
-        );
-
+        result = await createJobFromText(jdText.trim());
       }
 
+      console.log("Job created:", result);
 
-      console.log(
-        "Job created:",
-        result
-      );
+      clearInterval(progressInterval);
+      setJdProgress(100);
 
+      // Hold at 100% briefly so the user sees it
+      await new Promise((resolve) => setTimeout(resolve, 600));
 
       // ------------------------------------------------------
       // Save job
       // ------------------------------------------------------
 
       setJob(result);
-
-      setJobId(
-        result.job_id
-      );
-
+      setJobId(result.job_id);
 
       // ------------------------------------------------------
       // Save extracted requirements
       // ------------------------------------------------------
 
-      setRequirements(
-        result.requirements || {}
-      );
-
+      setRequirements(result.requirements || {});
 
       // ------------------------------------------------------
       // Update title
@@ -531,33 +539,18 @@ export default function MatchAgent() {
         jobTitle ||
         "Job Description";
 
-      setJobTitle(
-        extractedTitle
-      );
-
-
-      setStatus(
-        "Criteria ready"
-      );
+      setJobTitle(extractedTitle);
+      setStatus("Criteria ready");
 
     } catch (err) {
-
-      console.error(
-        "JD analysis failed:",
-        err
-      );
-
+      clearInterval(progressInterval);
+      console.error("JD analysis failed:", err);
       setStatus("Draft");
-
-      setError(
-        err.message ||
-        "Failed to analyze the job description."
-      );
+      setError(err.message || "Failed to analyze the job description.");
 
     } finally {
-
       setIsAnalyzing(false);
-
+      setJdProgress(0);
     }
   };
 
@@ -648,6 +641,7 @@ export default function MatchAgent() {
 
       clearInterval(progressInterval);
       setScreeningProgress(100);
+      setScreeningTook(screeningElapsedRef.current); // read ref — always the live value
       await new Promise(resolve => setTimeout(resolve, 400));
 
 
@@ -1341,51 +1335,67 @@ export default function MatchAgent() {
 
 
 
-              {/* ANALYZE */}
+              {/* ANALYZE BUTTON + PROGRESS BAR */}
 
               <button
                 onClick={handleAnalyze}
                 disabled={isAnalyzing}
-                className="w-full rounded-xl px-4 py-3.5 text-sm font-bold text-white shadow-lg flex items-center justify-center gap-2 transition-colors border bg-slate-800 hover:bg-slate-700 border-slate-700"
+                className={`w-full rounded-xl px-4 py-3.5 text-sm font-bold text-white shadow-lg flex items-center justify-center gap-2 transition-all border ${
+                  isAnalyzing
+                    ? 'bg-slate-900 border-teal-500/40 cursor-not-allowed'
+                    : 'bg-slate-800 hover:bg-slate-700 border-slate-700'
+                }`}
               >
-
                 {isAnalyzing ? (
-
                   <>
-                    <svg
-                      className="size-4 animate-spin"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                    >
-                      <circle
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                        className="opacity-25"
-                      />
-
-                      <path
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                        fill="currentColor"
-                        className="opacity-75"
-                      />
-                    </svg>
-
-                    AI is analyzing the JD…
-
+                    {/* tiny animated ring */}
+                    <span className="relative flex size-4 shrink-0">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-40"></span>
+                      <span className="relative inline-flex rounded-full size-4 bg-teal-500"></span>
+                    </span>
+                    Parsing JD… {jdProgress}%
                   </>
-
                 ) : (
-
                   requirements
                     ? "Re-analyze JD"
                     : "Analyze JD & Create Search Criteria"
-
                 )}
-
               </button>
+
+              {/* Progress bar — only visible while analyzing */}
+              {isAnalyzing && (
+                <div className="mt-3 animate-fade-in">
+                  <div className="flex justify-between items-center mb-1.5">
+                    <span className="text-[11px] font-semibold text-slate-400">
+                      {jdProgress < 30 ? 'Reading document…'
+                        : jdProgress < 60 ? 'Extracting requirements…'
+                        : jdProgress < 88 ? 'Building search criteria…'
+                        : 'Finalising…'}
+                    </span>
+                    <span className={`text-[11px] font-bold tabular-nums ${
+                      jdProgress === 100 ? 'text-teal-400' : 'text-slate-300'
+                    }`}>
+                      {jdProgress}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="h-2 rounded-full transition-all duration-500 ease-out"
+                      style={{
+                        width: `${jdProgress}%`,
+                        background: jdProgress === 100
+                          ? 'linear-gradient(90deg, #14b8a6, #22d3ee)'
+                          : 'linear-gradient(90deg, #14b8a6, #6366f1)',
+                      }}
+                    />
+                  </div>
+                  {jdProgress === 100 && (
+                    <p className="mt-2 text-center text-[11px] font-bold text-teal-400 animate-fade-in">
+                      ✓ JD parsed successfully!
+                    </p>
+                  )}
+                </div>
+              )}
 
 
 
@@ -1584,6 +1594,24 @@ export default function MatchAgent() {
                       }
                     `}
                   </style>
+
+                  {/* Clock badge — top right */}
+                  <div className="flex justify-end mb-2">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-800 border border-teal-500/30 px-3 py-1 text-xs font-bold text-teal-400 font-mono shadow-[0_0_10px_rgba(20,184,166,0.15)]">
+                      {/* pulsing dot */}
+                      <span className="relative flex size-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-60"></span>
+                        <span className="relative inline-flex rounded-full size-2 bg-teal-500"></span>
+                      </span>
+                      {/* clock icon */}
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      {/* M:SS */}
+                      {`${Math.floor(screeningElapsed / 60)}:${String(screeningElapsed % 60).padStart(2, '0')}`}
+                    </span>
+                  </div>
+
                   <div className="relative w-16 h-20 bg-slate-800 rounded-lg border-2 border-slate-700 mx-auto overflow-hidden shadow-[0_0_15px_rgba(59,130,246,0.15)] mb-4">
                     <div className="absolute top-4 left-3 right-3 h-1 bg-slate-600 rounded"></div>
                     <div className="absolute top-8 left-3 right-6 h-1 bg-slate-600 rounded"></div>
@@ -1647,11 +1675,21 @@ export default function MatchAgent() {
                         <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                       </div>
                       <h3 className="text-xl font-bold text-white mb-2">Screening Complete</h3>
-                      <p className="text-slate-400 mb-2">Successfully screened and ranked {candidates.length} candidates against your criteria.</p>
-                      <p className="text-sm font-medium text-slate-500 mb-6 bg-slate-800/50 px-3 py-1.5 rounded-lg border border-slate-700/50 inline-block">
-                        Total time taken: <span className="text-white font-mono">{formatScreeningTime(screeningTime)}</span>
-                      </p>
-                      
+                      <p className="text-slate-400 mb-3">Successfully screened and ranked {candidates.length} candidates against your criteria.</p>
+
+                      {/* Elapsed time summary */}
+                      {screeningTook !== null && (
+                        <div className="flex items-center gap-2 mb-6 rounded-full bg-slate-800 border border-teal-500/20 px-4 py-1.5">
+                          <svg className="w-3.5 h-3.5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <span className="text-xs font-bold text-slate-400">Completed in&nbsp;</span>
+                          <span className="text-xs font-bold text-teal-400 font-mono">
+                            {`${Math.floor(screeningTook / 60)}:${String(screeningTook % 60).padStart(2, '0')}`}
+                          </span>
+                        </div>
+                      )}
+
                       <button 
                         onClick={() => setCandidatesModalOpen(true)}
                         className="rounded-xl bg-accent px-6 py-3 text-sm font-bold text-white hover:bg-accent-light transition-colors flex items-center gap-2"
