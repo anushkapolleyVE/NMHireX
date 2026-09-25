@@ -262,6 +262,8 @@ class JobCandidate(Base):
     classification: Mapped[str | None] = mapped_column(String(50))
     is_shortlisted: Mapped[bool] = mapped_column(Boolean, default=False)
     ranking_position: Mapped[int | None] = mapped_column(Integer)
+    interview_scheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    interview_link: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
     __table_args__ = (UniqueConstraint("job_id", "candidate_id", name="uq_job_candidate"),)

@@ -1787,25 +1787,145 @@ async def whatsapp_webhook(
             from sqlalchemy import text as sql_text
             from .tool_functions import _send_whatsapp_text_message
 
-            if intent == "POSITIVE":
-                # Mark as INTERESTED
+            current_status = job_candidate_rec.recruitment_status
+
+            if intent == "POSITIVE" and current_status == "CONTACTED":
+                # Step 1 – Mark as INTERESTED and ask candidate to pick a time slot
                 db.execute(
                     sql_text("UPDATE job_candidates SET recruitment_status = 'INTERESTED', updated_at = now() WHERE id = :id"),
                     {"id": job_candidate_rec.id}
                 )
                 db.commit()
 
-                # Send interview link message
-                interview_msg = (
-                    "Great news! 🎉 We'd love to move forward with your application.\n\n"
-                    "Here is your interview link:\n"
-                    "https://teams.microsoft.com/l/meetup-join/interview\n\n"
-                    "Please join at the scheduled time. We look forward to speaking with you!"
-                )
-                _send_whatsapp_text_message(candidate.phone, interview_msg)
-                print(f"Sent interview link to {candidate.name}")
+                # Build the next 7 days with options
+                from datetime import timedelta, timezone as tz
+                now_ist = datetime.now(tz.utc) + timedelta(hours=5, minutes=30)
+                day_lines = []
+                for i in range(1, 8):
+                    day = now_ist + timedelta(days=i)
+                    day_lines.append(f"  {i}. {day.strftime('%A, %d %B %Y')} – 10:00 AM / 2:00 PM / 4:00 PM")
+                slot_list = "\n".join(day_lines)
 
-            elif intent == "NEGATIVE":
+                calendar_msg = (
+                    f"Great news! 🎉 We'd love to move forward with your application.\n\n"
+                    f"Please select a convenient date and time for your interview from the options below "
+                    f"(within the next 7 days):\n\n"
+                    f"{slot_list}\n\n"
+                    f"Simply reply with the *day number and time*, for example:\n"
+                    f"  \"3, 2:00 PM\" or \"Tuesday 10:00 AM\"\n\n"
+                    f"We look forward to connecting with you! 😊"
+                )
+                _send_whatsapp_text_message(candidate.phone, calendar_msg)
+
+                # Save the outbound calendar message in candidate_contacts
+                outbound_cal = CandidateContact(
+                    job_candidate_id=job_candidate_rec.id,
+                    channel="WHATSAPP",
+                    message_type="OUTBOUND",
+                    message=calendar_msg,
+                    provider="NMVE",
+                    status="SENT",
+                    sent_at=datetime.utcnow(),
+                )
+                db.add(outbound_cal)
+                db.commit()
+                print(f"Sent interview slot selection message to {candidate.name}")
+
+            elif current_status == "INTERESTED":
+                # Step 2 – Candidate is replying with their chosen time slot.
+                # Parse the date/time using OpenAI.
+                from datetime import timedelta, timezone as tz
+                now_ist = datetime.now(tz.utc) + timedelta(hours=5, minutes=30)
+                scheduled_at = None
+                try:
+                    import openai as _openai
+                    _client = _openai.OpenAI(api_key=settings.OPENAI_API_KEY)
+                    parse_completion = _client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {
+                                "role": "system",
+                                "content": (
+                                    f"Today is {now_ist.strftime('%A, %d %B %Y')}. "
+                                    "A job candidate has replied with their preferred interview date and time. "
+                                    "Extract the date and time from their message and return it as an ISO 8601 string "
+                                    "(YYYY-MM-DDTHH:MM:SS+05:30). If you cannot determine a valid date/time, reply with 'UNKNOWN'."
+                                )
+                            },
+                            {
+                                "role": "user",
+                                "content": f"Candidate reply: {response_text}"
+                            }
+                        ],
+                        max_tokens=30,
+                        temperature=0
+                    )
+                    parsed_str = parse_completion.choices[0].message.content.strip()
+                    print(f"Parsed datetime string: {parsed_str}")
+                    if parsed_str.upper() != "UNKNOWN":
+                        from datetime import datetime as dt
+                        try:
+                            scheduled_at = dt.fromisoformat(parsed_str)
+                        except ValueError:
+                            scheduled_at = None
+                except Exception as parse_err:
+                    print(f"Date/time parse error: {parse_err}")
+
+                if scheduled_at is None:
+                    # Could not parse – ask again
+                    retry_msg = (
+                        "Sorry, I couldn't understand the date and time you selected. "
+                        "Please reply in this format, e.g.: \"Monday, 10:00 AM\" or \"27 September, 2:00 PM\"."
+                    )
+                    _send_whatsapp_text_message(candidate.phone, retry_msg)
+                    print(f"Could not parse time from '{response_text}' – asked candidate to retry")
+                else:
+                    # Persist the scheduled time and a Teams link in job_candidates
+                    teams_link = "https://teams.microsoft.com/l/meetup-join/interview"
+                    db.execute(
+                        sql_text(
+                            "UPDATE job_candidates "
+                            "SET recruitment_status = 'INTERVIEW_LINK_SENT', "
+                            "    interview_scheduled_at = :scheduled_at, "
+                            "    interview_link = :teams_link, "
+                            "    updated_at = now() "
+                            "WHERE id = :id"
+                        ),
+                        {
+                            "id": job_candidate_rec.id,
+                            "scheduled_at": scheduled_at,
+                            "teams_link": teams_link,
+                        }
+                    )
+                    db.commit()
+
+                    formatted_time = scheduled_at.strftime("%A, %d %B %Y at %I:%M %p IST")
+                    interview_msg = (
+                        f"Thank you for confirming! ✅\n\n"
+                        f"Your interview has been scheduled for:\n"
+                        f"📅 *{formatted_time}*\n\n"
+                        f"Here is your Microsoft Teams link to join the interview:\n"
+                        f"🔗 {teams_link}\n\n"
+                        f"This link will allow you to open and give your exam on {formatted_time}.\n\n"
+                        f"Please join the meeting 5 minutes early. We look forward to speaking with you! 🙂"
+                    )
+                    _send_whatsapp_text_message(candidate.phone, interview_msg)
+
+                    # Persist the outbound interview message in candidate_contacts
+                    outbound_interview = CandidateContact(
+                        job_candidate_id=job_candidate_rec.id,
+                        channel="WHATSAPP",
+                        message_type="OUTBOUND",
+                        message=interview_msg,
+                        provider="NMVE",
+                        status="SENT",
+                        sent_at=datetime.utcnow(),
+                    )
+                    db.add(outbound_interview)
+                    db.commit()
+                    print(f"Sent Teams interview link to {candidate.name} for {formatted_time}")
+
+            elif intent == "NEGATIVE" and current_status not in ("INTERVIEW_LINK_SENT", "NOT_INTERESTED"):
                 # Mark as NOT_INTERESTED
                 db.execute(
                     sql_text("UPDATE job_candidates SET recruitment_status = 'NOT_INTERESTED', updated_at = now() WHERE id = :id"),
@@ -1817,6 +1937,7 @@ async def whatsapp_webhook(
                 thank_you_msg = "Thank you for your response. We wish you all the best in your career journey! 🙏"
                 _send_whatsapp_text_message(candidate.phone, thank_you_msg)
                 print(f"Sent thank-you to {candidate.name}")
+
 
         return {
             "success": True,

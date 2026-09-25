@@ -1859,10 +1859,13 @@ def _send_whatsapp_to_candidate(
             
             payload = {
                 "to": clean_phone,
-                "type": "text",
-                "text": {
-                        "body": "Hi"
-            },
+                "type": "template",
+                "template": {
+                    "name": "hello_world",
+                    "language": {
+                    "code": "en_US"
+                    }
+                },
                 "referenceId": f"NMHireX-{str(candidate_id)[:8]}",
                 "callbackUrl": "https://nmhirex.onrender.com/api/webhooks/whatsapp"
             }
@@ -2103,27 +2106,31 @@ def get_all_candidates(db: Session, user_id: UUID) -> list[dict]:
                 else:
                     scoreLabel = lbl
 
-        # Find the interview link sent to this candidate (outbound message containing Teams link)
+        # Find the interview link sent to this candidate – stored directly on job_candidates
         interview_link = None
+        interview_scheduled_at = None
         if jc_row:
             jc_obj = jc_row[0]
-            outbound_interview = (
-                db.query(CandidateContact)
-                .filter(
-                    CandidateContact.job_candidate_id == jc_obj.id,
-                    CandidateContact.channel == "WHATSAPP",
-                    CandidateContact.message_type == "OUTBOUND",
-                    CandidateContact.message.contains("teams.microsoft.com")
+            interview_link = getattr(jc_obj, "interview_link", None)
+            interview_scheduled_at = getattr(jc_obj, "interview_scheduled_at", None)
+            # Fallback: scan outbound messages for a Teams link (legacy data)
+            if not interview_link:
+                outbound_interview = (
+                    db.query(CandidateContact)
+                    .filter(
+                        CandidateContact.job_candidate_id == jc_obj.id,
+                        CandidateContact.channel == "WHATSAPP",
+                        CandidateContact.message_type == "OUTBOUND",
+                        CandidateContact.message.contains("teams.microsoft.com")
+                    )
+                    .order_by(CandidateContact.created_at.desc())
+                    .first()
                 )
-                .order_by(CandidateContact.created_at.desc())
-                .first()
-            )
-            if outbound_interview and outbound_interview.message:
-                # Extract the URL from the message
-                import re
-                urls = re.findall(r'https?://\S+', outbound_interview.message)
-                if urls:
-                    interview_link = urls[0].rstrip("!")
+                if outbound_interview and outbound_interview.message:
+                    import re
+                    urls = re.findall(r'https?://\S+', outbound_interview.message)
+                    if urls:
+                        interview_link = urls[0].rstrip("!")
 
         results.append({
             "id": str(candidate.id),
@@ -2139,6 +2146,7 @@ def get_all_candidates(db: Session, user_id: UUID) -> list[dict]:
             "skills": ", ".join([s.get("name") or s.get("skill") or s.get("skill_name") or str(s) if isinstance(s, dict) else str(s) for s in candidate.normalized_profile.get("skills", [])][:5]) if candidate.normalized_profile and candidate.normalized_profile.get("skills") else "-",
             "stage": stage,
             "interview_link": interview_link,
+            "interview_scheduled_at": interview_scheduled_at.isoformat() if interview_scheduled_at else None,
             "experience_details": candidate.normalized_profile.get("experiences", []) if candidate.normalized_profile else [],
             "all_skills": candidate.normalized_profile.get("skills", []) if candidate.normalized_profile else []
         })
